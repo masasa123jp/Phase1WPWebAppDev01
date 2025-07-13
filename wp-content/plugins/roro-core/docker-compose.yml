@@ -1,0 +1,28 @@
+version: '3.9'
+
+services:
+  wp:
+    image: wordpress:6.5-php8.3-apache
+    environment:
+      WORDPRESS_DB_HOST: db
+      WORDPRESS_DB_USER: wp
+      WORDPRESS_DB_PASSWORD: wp
+      WORDPRESS_DB_NAME: wp
+    ports: [ "8080:80" ]
+    volumes:
+      - ./wp-content:/var/www/html/wp-content
+  db:
+    image: mariadb:10.11
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: wp
+      MYSQL_USER: wp
+      MYSQL_PASSWORD: wp
+    volumes:
+      - dbdata:/var/lib/mysql
+  mailhog:
+    image: mailhog/mailhog
+    ports: [ "8025:8025" ]
+
+volumes:
+  dbdata:
