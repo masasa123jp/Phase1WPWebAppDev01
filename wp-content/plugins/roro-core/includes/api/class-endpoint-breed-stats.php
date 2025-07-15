@@ -1,44 +1,57 @@
 <?php
-/**
- * GET /wp-json/roro/v1/breed-stats
- * 犬種 × 年齢（月）ごとの罹患リスク指数を返す。
- * 今はダミー計算だが、将来は外部 ML モデルと連携可能。
- */
-namespace RoroCore\Api;
-use WP_REST_Controller;
+namespace RoroCore\API;
+
+use WP_REST_Server;
 use WP_REST_Request;
+use WP_REST_Response;
+use RoroCore\DB;
 
-class Endpoint_Breed_Stats extends WP_REST_Controller {
+class Endpoint_Breed_Stats {
 
-	public function __construct() {
-		$this->namespace = 'roro/v1';
-		$this->rest_base = 'breed-stats';
+	const ROUTE = '/breed-stats/(?P<breed>[a-zA-Z0-9_-]+)';
+
+	public static function register(): void {
+		register_rest_route(
+			'roro/v1',
+			self::ROUTE,
+			[
+				'methods'             => WP_REST_Server::READABLE,
+				'callback'            => [ self::class, 'get_stats' ],
+				'permission_callback' => '__return_true',
+				'args'                => [
+					'breed' => [
+						'description' => 'Breed slug (e.g. shiba)',
+						'required'    => true,
+						'type'        => 'string',
+					],
+				],
+			]
+		);
 	}
 
-	public function register_routes() {
-		register_rest_route( $this->namespace, '/' . $this->rest_base, [
-			'methods'             => 'GET',
-			'callback'            => [ $this, 'get_stats' ],
-			'permission_callback' => '__return_true',
-			'args'                => [
-				'breed' => [ 'required' => true ],
-				'age'   => [ 'required' => true, 'validate_callback' => 'is_numeric' ],
-			],
-		] );
-	}
-
-	public function get_stats( WP_REST_Request $req ) {
+	/**
+	 * Return monthly weight/height percentile data for a breed.
+	 */
+	public static function get_stats( WP_REST_Request $req ): WP_REST_Response {
+		global $wpdb;
 		$breed = sanitize_text_field( $req['breed'] );
-		$age   = intval( $req['age'] );
 
-		// TODO: 実データに置換
-		$dummy = [
-			'labels'   => [ '骨格', '心臓', '皮膚', '歯', '肥満' ],
-			'datasets' => [[
-				'label' => "$breed ($age m)",
-				'data'  => array_map( fn() => rand(10, 90), range(1, 5 ) ),
-			]],
-		];
-		return rest_ensure_response( $dummy );
+		$sql = "
+			SELECT month_age, weight_avg, height_avg
+			FROM {$wpdb->prefix}roro_breed_growth
+			WHERE breed_slug = %s
+			ORDER BY month_age
+		";
+		$rows = $wpdb->get_results( $wpdb->prepare( $sql, $breed ), ARRAY_A );
+
+		if ( empty( $rows ) ) {
+			return new WP_REST_Response(
+				[ 'message' => 'Breed not found' ],
+				404
+			);
+		}
+
+		return rest_ensure_response( $rows );
 	}
 }
+add_action( 'rest_api_init', [ Endpoint_Breed_Stats::class, 'register' ] );

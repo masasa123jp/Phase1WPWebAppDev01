@@ -1,63 +1,75 @@
 <?php
 /**
- * Plugin Name: RoRo Core
- * Description : Phase 1.5/1.6 core functionality (REST API, Gutenberg blocks, cron, social login)
- * Version     : 0.1.0
- * Author      : RoRo Dev Team
- * License     : MIT
+ * Plugin Name:  RoRo Core
+ * Description : Core functionality for RoRo pet platform (Phase 1.5 / 1.6).
+ * Version     : 0.5.0
+ * Author      : XServer App Dev Team
+ * License     : GPL-2.0+
  *
  * @package RoroCore
  */
 
-defined( 'ABSPATH' ) || exit;
+defined( 'ABSPATH' ) || exit; // 直アクセス防止  :contentReference[oaicite:6]{index=6}
 
 /* -------------------------------------------------------------------------
-   1. Autoloader
+   1. PSR-4 Autoloader
    ------------------------------------------------------------------------- */
 require_once __DIR__ . '/includes/class-loader.php';
-RoroCore\Loader::init();
+
+$loader = new RoroCore\Loader();                     // 自前オートローダ  :contentReference[oaicite:7]{index=7}
+$loader->addNamespace( 'RoroCore',       __DIR__ . '/includes' );
+$loader->addNamespace( 'RoroCore\\API',  __DIR__ . '/api' );
+$loader->addNamespace( 'RoroCore\\Cron', __DIR__ . '/includes/cron' ); // 追加で Cron 系も
+$loader->addNamespace( 'RoroCore\\Admin',__DIR__ . '/includes/admin' );
+$loader->register();
 
 /* -------------------------------------------------------------------------
-   2. Activation / Deactivation hooks
+   2. Activation / Deactivation
    ------------------------------------------------------------------------- */
-register_activation_hook( __FILE__, function () {
-	RoroCore\Db\Schema::install();
-} );
+register_activation_hook( __FILE__,  __NAMESPACE__ . '\\activate' );   // :contentReference[oaicite:8]{index=8}
+register_deactivation_hook( __FILE__, __NAMESPACE__ . '\\deactivate' );
 
-register_deactivation_hook( __FILE__, function () {
-	// nothing to clean yet (keep data) – add wp_clear_scheduled_hook( … ) if needed
-} );
+function activate(): void {
+	global $wpdb;
 
-/* -------------------------------------------------------------------------
-   3. Load front/back components
-   ------------------------------------------------------------------------- */
-add_action( 'plugins_loaded', function () {
-	// Admin pages
-	if ( is_admin() ) {
-		new RoroCore\Admin\Menu();
-		new RoroCore\Admin\Settings();
+	// ── 2-1) 文字コードを安全に取得しテーブルを生成
+	$charset = $wpdb->get_charset_collate();           // :contentReference[oaicite:9]{index=9}
+	$table   = $wpdb->prefix . 'roro_photo_meta';
+
+	$wpdb->query(
+		"CREATE TABLE IF NOT EXISTS $table (
+			id        BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+			post_id   BIGINT UNSIGNED NOT NULL,
+			meta_key  VARCHAR(255)  NOT NULL,
+			meta_value LONGTEXT NULL
+		) $charset"
+	);
+
+	// ── 2-2) Cron 登録（重複防止）
+	if ( ! wp_next_scheduled( RoroCore\Cron\Scheduler::HOOK_WEEKLY_PUSH ) ) { // :contentReference[oaicite:10]{index=10}
+		RoroCore\Cron\Scheduler::schedule_events();                          // :contentReference[oaicite:11]{index=11}
 	}
+}
 
-	// REST ルート
-	add_action( 'rest_api_init', function () {
-		global $wpdb;
-		( new RoroCore\Auth\Auth_Controller( $wpdb ) )->register_routes();
-		( new RoroCore\Api\Endpoint_Gacha( $wpdb ) )->register_routes();
-		( new RoroCore\Api\Endpoint_Report( $wpdb ) )->register_routes();
-		( new RoroCore\Api\Endpoint_Photo( $wpdb ) )->register_routes();
-		( new RoroCore\Api\Endpoint_Facility_Search( $wpdb ) )->register_routes();
-		( new RoroCore\Api\Endpoint_Breed_Stats( $wpdb ) )->register_routes();
-		( new RoroCore\Api\Endpoint_Analytics( $wpdb ) )->register_routes();
-		( new RoroCore\Api\Endpoint_Preference( $wpdb ) )->register_routes();
-		( new RoroCore\Api\Endpoint_Geocode( $wpdb ) )->register_routes();
-		( new RoroCore\Api\Endpoint_Dashboard( $wpdb ) )->register_routes();
-	} );
+function deactivate(): void {
+	wp_clear_scheduled_hook( RoroCore\Cron\Scheduler::HOOK_WEEKLY_PUSH );
+}
 
-	// Cron tasks
+/* -------------------------------------------------------------------------
+   3. ロードするサブシステム
+   ------------------------------------------------------------------------- */
+add_action( 'plugins_loaded', static function () {
+
+	// REST API はエンドポイント各クラスが register_rest_route() を自己登録
+	do_action( 'roro_core/register_endpoints' ); // 各 Endpoint_* クラスがここにフック
+
+	// Cron 初期化
 	RoroCore\Cron\Scheduler::init();
-	RoroCore\Cron\Cleanup::init();
 
-	// Gutenberg blocks & assets
-	RoroCore\Post_Types::register();
-	RoroCore\Meta::register();
+	// 管理画面メニューなど
+	if ( is_admin() ) {
+		if ( class_exists( 'RoroCore\\Admin\\Menu' ) ) {
+			new RoroCore\Admin\Menu();
+		}
+	}
 } );
