@@ -1,51 +1,64 @@
 <?php
-namespace RoroCore\Api;
+/**
+ * Save customer feedback reports.
+ *
+ * Route: /roro/v1/report
+ *
+ * @package RoroCore\API
+ */
 
-use WP_REST_Controller;
+declare( strict_types = 1 );
+
+namespace RoroCore\API;
+
+use WP_REST_Server;
 use WP_REST_Request;
-use wpdb;
+use WP_REST_Response;
 
-class Endpoint_Report extends WP_REST_Controller {
+class Endpoint_Report {
 
-	private wpdb $db;
-	public function __construct( wpdb $wpdb ) {
-		$this->db = $wpdb;
-		$this->namespace = 'roro/v1';
-		$this->rest_base = 'report';
+	private string $table;
+
+	public function __construct( \wpdb $wpdb ) {
+		$this->table = $wpdb->prefix . 'roro_report';
+		add_action( 'rest_api_init', [ $this, 'register' ] );
 	}
 
-	public function register_routes() {
+	public function register(): void {
 		register_rest_route(
-			$this->namespace,
-			'/' . $this->rest_base,
+			'roro/v1',
+			'/report',
 			[
-				'methods'  => WP_REST_Server::CREATABLE,
-				'callback' => [ $this, 'create_report' ],
-				'permission_callback' => [ $this, 'can_create' ],
-				'args' => [
-					'content' => [ 'required' => true ],
-				],
+				'methods'             => WP_REST_Server::CREATABLE,
+				'callback'            => [ $this, 'save' ],
+				'permission_callback' => [ $this, 'can_submit' ],
 			]
 		);
 	}
 
-	public function can_create() : bool {
-		return is_user_logged_in() && wp_verify_nonce( $_REQUEST['_wpnonce'] ?? '', 'wp_rest' ); // :contentReference[oaicite:9]{index=9}
+	/** Only logged‑in users with valid wp_rest nonce can submit. */
+	public function can_submit(): bool {
+		return is_user_logged_in() && wp_verify_nonce( $_REQUEST['nonce'] ?? '', 'wp_rest' ); // :contentReference[oaicite:5]{index=5}
 	}
 
-	public function create_report( WP_REST_Request $req ) {
-		$customer_id = get_current_user_id();
-		$content     = wp_json_encode( $req->get_json_params() );
+	public function save( WP_REST_Request $req ): WP_REST_Response {
+		global $wpdb;
 
-		$this->db->insert(
-			"{$this->db->prefix}roro_report",
+		$data = json_decode( $req->get_body(), true, 512, JSON_THROW_ON_ERROR );
+		if ( empty( $data['message'] ) ) {
+			return new WP_REST_Response( [ 'error' => 'empty_message' ], 400 );
+		}
+
+		$wpdb->insert(
+			$this->table,
 			[
-				'customer_id' => $customer_id,
-				'content'     => $content,
+				'user_id'    => get_current_user_id(),
+				'message'    => sanitize_text_field( $data['message'] ),
+				'created_at' => current_time( 'mysql' ),
 			],
-			[ '%d', '%s' ]
+			[ '%d', '%s', '%s' ]
 		);
 
-		return rest_ensure_response( [ 'report_id' => $this->db->insert_id ] );
+		return rest_ensure_response( [ 'success' => true ] );
 	}
 }

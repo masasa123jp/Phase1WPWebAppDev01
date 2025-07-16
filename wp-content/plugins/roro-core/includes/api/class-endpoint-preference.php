@@ -1,56 +1,56 @@
 <?php
-namespace RoroCore\Api;
+/**
+ * CRUD for notification preferences.
+ *
+ * Route: /roro/v1/preference
+ *
+ * @package RoroCore\API
+ */
 
-use WP_REST_Controller;
+declare( strict_types = 1 );
+
+namespace RoroCore\API;
+
+use WP_REST_Server;
 use WP_REST_Request;
+use WP_REST_Response;
 
-class Endpoint_Preference extends WP_REST_Controller {
+class Endpoint_Preference {
+
+	private const META_KEY = 'roro_notification_pref';
 
 	public function __construct() {
-		$this->namespace = 'roro/v1';
-		$this->rest_base = 'preferences';
+		add_action( 'rest_api_init', [ $this, 'register_routes' ] );
 	}
 
-	public function register_routes() {
+	public function register_routes(): void {
 		register_rest_route(
-			$this->namespace,
-			'/' . $this->rest_base,
+			'roro/v1',
+			'/preference',
 			[
-				[
-					'methods'             => 'GET',
-					'callback'            => [ $this, 'get_item' ],
-					'permission_callback' => [ $this, 'check_permissions' ],
-				],
-				[
-					'methods'             => 'POST',
-					'callback'            => [ $this, 'update_item' ],
-					'permission_callback' => [ $this, 'check_permissions' ],
-					'args'                => [
-						'line'  => [ 'type' => 'boolean' ],
-						'email' => [ 'type' => 'boolean' ],
-						'fcm'   => [ 'type' => 'boolean' ],
-					],
-				],
+				'methods'             => [ WP_REST_Server::READABLE, WP_REST_Server::EDITABLE ],
+				'callback'            => [ $this, 'handle' ],
+				'permission_callback' => function () {
+					return is_user_logged_in() && wp_verify_nonce( $_REQUEST['nonce'] ?? '', 'wp_rest' );
+				},
 			]
 		);
 	}
 
-	public function check_permissions() : bool {
-		return is_user_logged_in();
-	}
+	public function handle( WP_REST_Request $req ): WP_REST_Response {
+		$user_id = get_current_user_id();
 
-	public function get_item( WP_REST_Request $req ) {
-		$u = get_current_user_id();
-		return rest_ensure_response( get_user_meta( $u, 'roro_notify_pref', true ) );
-	}
+		if ( 'GET' === $req->get_method() ) {
+			return rest_ensure_response( get_user_meta( $user_id, self::META_KEY, true ) ?: [] );
+		}
 
-	public function update_item( WP_REST_Request $req ) {
-		$u = get_current_user_id();
-		update_user_meta( $u, 'roro_notify_pref', [
-			'line'  => (bool) $req['line'],
-			'email' => (bool) $req['email'],
-			'fcm'   => (bool) $req['fcm'],
-		] );
-		return rest_ensure_response( [ 'updated' => true ] );
+		$body = $req->get_json_params();
+		update_user_meta( $user_id, self::META_KEY, wp_parse_args( $body, [
+			'line'  => false,
+			'email' => false,
+			'fcm'   => false,
+		] ) );
+
+		return rest_ensure_response( [ 'success' => true ] );
 	}
 }

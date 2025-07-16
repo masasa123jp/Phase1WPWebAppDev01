@@ -1,86 +1,74 @@
 <?php
-namespace RoroCore\Api;
+/**
+ * Endpoint: /gacha – returns random advice/facility.
+ *
+ * @package RoroCore\API
+ */
 
-use WP_REST_Controller;
-use wpdb;
+declare( strict_types = 1 );
 
-class Endpoint_Gacha extends WP_REST_Controller {
+namespace RoroCore\API;
 
-	private wpdb $db;
-	public function __construct( wpdb $wpdb ) {
-		$this->db = $wpdb;
-		$this->namespace = 'roro/v1';
-		$this->rest_base = 'gacha';
+use WP_REST_Server;
+use WP_REST_Request;
+use WP_REST_Response;
+
+class Endpoint_Gacha {
+
+	private string $advice_table;
+	private string $log_table;
+
+	public function __construct( \wpdb $wpdb ) {
+		$this->advice_table = $wpdb->prefix . 'roro_advice';
+		$this->log_table    = $wpdb->prefix . 'roro_gacha_log';
+
+		add_action( 'rest_api_init', [ $this, 'register_routes' ] );
 	}
 
-	public function register_routes() {
+	/**
+	 * REST route registration.
+	 */
+	public function register_routes(): void {
 		register_rest_route(
-			$this->namespace,
-			'/' . $this->rest_base,
+			'roro/v1',
+			'/gacha',
 			[
-				'methods'  => 'POST',
-				'callback' => [ $this, 'spin' ],
-				'permission_callback' => fn() => is_user_logged_in(),
+				'methods'             => WP_REST_Server::CREATABLE,
+				'callback'            => [ $this, 'spin' ],
+				'permission_callback' => '__return_true', // 公開ルート :contentReference[oaicite:6]{index=6}
 			]
 		);
 	}
 
-	public function spin() {
-		$customer = get_current_user_id();
-		$table    = get_option( 'roro_gacha_table' );
-		$lines    = array_filter( array_map( 'str_getcsv', explode( "\n", trim( $table ) ) ) );
+	/**
+	 * Gacha spin callback.
+	 */
+	public function spin( WP_REST_Request $req ): WP_REST_Response {
+		global $wpdb;
 
-		/* CSV = category,probability  (sum to 1.0) */
-		$rand = mt_rand() / mt_getrandmax();
-		$sum  = 0;
-		$cat  = null;
-		foreach ( $lines as $l ) {
-			$sum += (float) $l[1];
-			if ( $rand <= $sum ) { $cat = $l[0]; break; }
-		}
-
-		if ( ! $cat ) $cat = 'cafe';
-
-		// 施設かアドバイスをランダム取得
-		if ( in_array( $cat, [ 'cafe','hospital','salon','park','hotel','school','store' ], true ) ) {
-			$item = $this->db->get_row(
-				$this->db->prepare(
-					"SELECT facility_id AS id,name FROM {$this->db->prefix}roro_facility WHERE category=%s ORDER BY RAND() LIMIT 1",
-					$cat
-				),
-				ARRAY_A
-			);
-			$prize_type = 'facility';
-			$facility_id = $item['id'];
-			$advice_id = null;
-		} else {
-			$item = $this->db->get_row(
-				$this->db->prepare(
-					"SELECT advice_id AS id,title AS name FROM {$this->db->prefix}roro_advice WHERE category=%s ORDER BY RAND() LIMIT 1",
-					$cat
-				),
-				ARRAY_A
-			);
-			$prize_type = 'advice';
-			$facility_id = null;
-			$advice_id = $item['id'];
-		}
-
-		// ログ
-		$this->db->insert(
-			"{$this->db->prefix}roro_gacha_log",
-			[
-				'customer_id' => $customer,
-				'facility_id' => $facility_id,
-				'advice_id'   => $advice_id,
-				'prize_type'  => $prize_type,
-			],
-			[ '%d','%d','%d','%s' ]
+		$advice = $wpdb->get_row(
+			"SELECT id, title, excerpt
+			 FROM {$this->advice_table}
+			 ORDER BY RAND()
+			 LIMIT 1",
+			ARRAY_A
 		);
 
-		return rest_ensure_response( [
-			'prize_type' => $prize_type,
-			'item'       => $item,
-		] );
+		if ( ! $advice ) {
+			return new WP_REST_Response( [ 'error' => 'No advice.' ], 404 );
+		}
+
+		// log
+		$wpdb->insert(
+			$this->log_table,
+			[
+				'advice_id' => (int) $advice['id'],
+				'created_at' => current_time( 'mysql' ),
+				'ip' => $_SERVER['REMOTE_ADDR'] ?? '',
+			],
+			[ '%d', '%s', '%s' ]
+		); // wpdb→insert は内部でエスケープ処理 :contentReference[oaicite:7]{index=7}
+
+		return rest_ensure_response( $advice );
 	}
 }

@@ -1,47 +1,73 @@
 <?php
 /**
- * 「RoRo 設定」タブを WP‑Admin › 設定に追加し、
- * - Google Maps API Key
- * - AdSense Publisher ID
- * - ガチャ確率テーブル (CSV)
- * を保存する。
+ * RoRo Settings page.
+ *
+ * @package RoroCore\Admin
  */
+
+declare( strict_types = 1 );
+
 namespace RoroCore\Admin;
 
 class Settings {
 
-	public function __construct() {
-		add_action( 'admin_init', [ $this, 'register_settings' ] );
-		add_action( 'admin_menu', [ $this, 'menu' ] );
+	private const GROUP = 'roro_options';
+	private const NAME  = 'roro_core_general';
+
+	public static function init(): void {
+		add_action( 'admin_init', [ self::class, 'register' ] );
 	}
 
-	public function menu() {
-		add_options_page( 'RoRo 設定', 'RoRo 設定', 'manage_options', 'roro-settings', [ $this, 'render' ] );
+	public static function register(): void {
+		register_setting(
+			self::GROUP,
+			self::NAME,
+			[
+				'type'              => 'array',
+				'sanitize_callback' => [ self::class, 'sanitize' ],
+				'default'           => [
+					'liff_id'   => '',
+					'api_token' => '',
+				],
+			]
+		);
+
+		add_settings_section(
+			'general',
+			__( 'General Settings', 'roro-core' ),
+			'__return_false',
+			'roro-settings'
+		);
+
+		self::field( 'liff_id', __( 'LINE LIFF ID', 'roro-core' ) );
+		self::field( 'api_token', __( 'External API Token', 'roro-core' ), true );
 	}
 
-	public function register_settings() {
-		register_setting( 'roro_settings', 'roro_maps_key', [ 'type'=>'string', 'sanitize_callback'=>'sanitize_text_field' ] );
-		register_setting( 'roro_settings', 'roro_adsense_id', [ 'type'=>'string', 'sanitize_callback'=>'sanitize_text_field' ] );
-		register_setting( 'roro_settings', 'roro_gacha_table', [ 'type'=>'string', 'sanitize_callback'=>'wp_kses_post' ] );
+	private static function field( string $key, string $label, bool $password = false ): void {
+		add_settings_field(
+			$key,
+			$label,
+			function () use ( $key, $password ) {
+				$opt  = get_option( self::NAME );
+				$type = $password ? 'password' : 'text';
+				printf(
+					'<input type="%1$s" name="%2$s[%3$s]" value="%4$s" class="regular-text" />',
+					esc_attr( $type ),
+					esc_attr( self::NAME ),
+					esc_attr( $key ),
+					esc_attr( $opt[ $key ] ?? '' )
+				);
+			},
+			'roro-settings',
+			'general'
+		);
 	}
 
-	public function render() {
-		?>
-		<div class="wrap">
-			<h1>RoRo 設定</h1>
-			<form method="post" action="options.php">
-				<?php settings_fields( 'roro_settings' ); ?>
-				<table class="form-table" role="presentation">
-					<tr><th>Google Maps API Key</th>
-						<td><input type="text" name="roro_maps_key" value="<?= esc_attr( get_option('roro_maps_key') ) ?>" class="regular-text" /></td></tr>
-					<tr><th>AdSense Publisher ID</th>
-						<td><input type="text" name="roro_adsense_id" value="<?= esc_attr( get_option('roro_adsense_id') ) ?>" class="regular-text" /></td></tr>
-					<tr><th>ガチャ確率テーブル (CSV)</th>
-						<td><textarea name="roro_gacha_table" rows="6" class="large-text code"><?= esc_textarea( get_option('roro_gacha_table') ) ?></textarea></td></tr>
-				</table>
-				<?php submit_button(); ?>
-			</form>
-		</div>
-		<?php
+	public static function sanitize( array $input ): array {
+		return [
+			'liff_id'   => sanitize_text_field( $input['liff_id'] ?? '' ),  // :contentReference[oaicite:9]{index=9}
+			'api_token' => sanitize_text_field( $input['api_token'] ?? '' ),
+		];
 	}
 }
+Settings::init();

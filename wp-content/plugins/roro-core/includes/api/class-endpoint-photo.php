@@ -1,65 +1,71 @@
 <?php
 /**
- * POST /wp-json/roro/v1/photo
- * 画像を WP Media Library へ登録し、位置情報・犬種タグを独自テーブルへ書き込む。
+ * Handle media uploads and associate meta.
+ *
+ * Route: /roro/v1/photo
+ *
+ * @package RoroCore\API
  */
-namespace RoroCore\Api;
 
-use WP_REST_Controller;
+declare( strict_types = 1 );
+
+namespace RoroCore\API;
+
+use WP_REST_Server;
+use WP_REST_Response;
 use WP_REST_Request;
-use WP_Error;
 
-class Endpoint_Photo extends WP_REST_Controller {
+class Endpoint_Photo {
 
 	public function __construct() {
-		$this->namespace = 'roro/v1';
-		$this->rest_base = 'photo';
+		add_action( 'rest_api_init', [ $this, 'register_route' ] );
 	}
 
-	public function register_routes() {
+	public function register_route(): void {
 		register_rest_route(
-			$this->namespace,
-			'/' . $this->rest_base,
+			'roro/v1',
+			'/photo',
 			[
-				'methods'             => 'POST',
-				'callback'            => [ $this, 'create_item' ],
-				'permission_callback' => [ $this, 'permissions_check' ],
-				'args'                => [
-					'file'     => [ 'required' => true ],
-					'breed'    => [],
-					'zipcode'  => [],
-				],
+				'methods'             => WP_REST_Server::CREATABLE,
+				'callback'            => [ $this, 'upload' ],
+				'permission_callback' => function () {
+					return current_user_can( 'upload_files' ) &&
+						wp_verify_nonce( $_REQUEST['nonce'] ?? '', 'wp_rest' ); // :contentReference[oaicite:6]{index=6}
+				},
 			]
 		);
 	}
 
-	public function permissions_check() {
-		return is_user_logged_in() || current_user_can( 'upload_files' );
-	}
-
-	public function create_item( WP_REST_Request $request ) {
-		$file = $request->get_file_params()['file'] ?? null;
-		if ( ! $file ) {
-			return new WP_Error( 'no_file', '画像がありません。', [ 'status' => 400 ] );
+	public function upload( WP_REST_Request $req ): WP_REST_Response {
+		if ( empty( $_FILES['file'] ) ) {
+			return new WP_REST_Response( [ 'error' => 'no_file' ], 400 );
 		}
 
-		$attach_id = media_handle_upload( 'file', 0 );
-		if ( is_wp_error( $attach_id ) ) {
-			return $attach_id;
+		$file  = $_FILES['file'];
+		$types = [ 'image/jpeg', 'image/png', 'image/gif' ];
+		if ( ! in_array( $file['type'], $types, true ) ) {
+			return new WP_REST_Response( [ 'error' => 'invalid_type' ], 415 );
 		}
 
-		global $wpdb;
-		$wpdb->insert(
-			$wpdb->prefix . 'roro_photo',
+		$uploaded = wp_handle_upload( $file, [ 'test_form' => false ] ); // :contentReference[oaicite:7]{index=7}
+
+		if ( isset( $uploaded['error'] ) ) {
+			return new WP_REST_Response( [ 'error' => $uploaded['error'] ], 500 );
+		}
+
+		$attachment_id = wp_insert_attachment(
 			[
-				'attachment_id' => $attach_id,
-				'breed'         => $request['breed'],
-				'zipcode'       => $request['zipcode'],
-				'created_at'    => current_time( 'mysql' ),
+				'post_mime_type' => $uploaded['type'],
+				'post_title'     => sanitize_file_name( $file['name'] ),
+				'post_content'   => '',
+				'post_status'    => 'inherit',
 			],
-			[ '%d', '%s', '%s', '%s' ]
+			$uploaded['file']
 		);
 
-		return rest_ensure_response( [ 'id' => $attach_id ] );
+		require_once ABSPATH . 'wp-admin/includes/image.php';
+		wp_update_attachment_metadata( $attachment_id, wp_generate_attachment_metadata( $attachment_id, $uploaded['file'] ) );
+
+		return rest_ensure_response( [ 'attachment_id' => $attachment_id, 'url' => wp_get_attachment_url( $attachment_id ) ] );
 	}
 }

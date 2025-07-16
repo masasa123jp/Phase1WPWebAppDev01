@@ -1,5 +1,11 @@
 <?php
-declare( strict_types=1 );
+/**
+ * Enqueue block/editor assets.
+ *
+ * @package RoroCore
+ */
+
+declare( strict_types = 1 );
 
 namespace RoroCore;
 
@@ -11,33 +17,32 @@ class Assets {
 	}
 
 	public static function editor(): void {
-		$dir = plugin_dir_url( __DIR__ ) . 'blocks/';
+		$base = plugins_url( '../blocks/', __FILE__ );
 
-		wp_register_script(
-			'roro-advice-card-editor',
-			$dir . 'advice-card/index.js',
-			[ 'wp-blocks', 'wp-element', 'wp-i18n', 'wp-data' ],
-			'1.0.0',
-			false
-		);
-		wp_register_script(
+		wp_enqueue_script(
 			'roro-gacha-wheel-editor',
-			$dir . 'gacha-wheel/index.js',
-			[ 'wp-blocks', 'wp-element', 'wp-i18n' ],
-			'1.0.0',
+			$base . 'gacha-wheel/index.js',
+			[ 'wp-blocks', 'wp-i18n', 'wp-element' ],
+			'1.1.0',
 			false
 		);
 	}
 
 	public static function frontend(): void {
-		$dir = plugin_dir_url( __DIR__ ) . 'blocks/';
-		wp_register_script(
+		$base = plugins_url( '../blocks/', __FILE__ );
+
+		wp_enqueue_script(
 			'roro-gacha-wheel',
-			$dir . 'gacha-wheel/frontend.js',
-			[ 'wp-element' ],
-			'1.0.0',
+			$base . 'gacha-wheel/frontend.js',
+			[],
+			'1.1.0',
 			true
 		);
+
+		wp_localize_script( 'roro-gacha-wheel', 'wpRoro', [
+			'rest_url' => esc_url_raw( rest_url( 'roro/v1/' ) ),
+			'nonce'    => wp_create_nonce( 'wp_rest' ),
+		] );
 	}
 }
 Assets::init();

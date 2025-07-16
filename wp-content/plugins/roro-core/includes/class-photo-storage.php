@@ -1,42 +1,57 @@
 <?php
 /**
- * roro_photo 独自テーブルのスキーマとクエリラッパー。
- * 外部 CDN へオフロードする際はここを差し替えるだけで対応可能。
+ * Photo Storage helper – saves attachment meta to custom table.
+ *
+ * @package RoroCore
  */
-namespace RoroCore;
 
-use wpdb;
+declare( strict_types = 1 );
+
+namespace RoroCore;
 
 class Photo_Storage {
 
-	private wpdb $db;
 	private string $table;
 
-	public function __construct( wpdb $wpdb ) {
-		$this->db    = $wpdb;
-		$this->table = $wpdb->prefix . 'roro_photo';
+	public function __construct( \wpdb $wpdb ) {
+		$this->table = $wpdb->prefix . 'roro_photo_meta';
 	}
 
-	/** 初回有効化時に呼び出し */
-	public function maybe_create_table() {
-		$sql = "CREATE TABLE IF NOT EXISTS {$this->table} (
-			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-			attachment_id BIGINT UNSIGNED NOT NULL,
-			breed VARCHAR(64) DEFAULT NULL,
-			zipcode CHAR(8) DEFAULT NULL,
-			created_at DATETIME NOT NULL,
-			PRIMARY KEY  (id),
-			KEY breed (breed),
-			KEY zipcode (zipcode)
-		) {$this->db->get_charset_collate()};";
-		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
-		dbDelta( $sql );
+	/**
+	 * Save meta (idempotent).
+	 *
+	 * @param int    $post_id Attachment ID.
+	 * @param string $key     Meta key.
+	 * @param mixed  $value   Meta value.
+	 */
+	public function save( int $post_id, string $key, $value ): void {
+		global $wpdb;
+		$wpdb->query(
+			$wpdb->prepare(
+				"INSERT INTO {$this->table} (post_id, meta_key, meta_value)
+				 VALUES ( %d, %s, %s )
+				 ON DUPLICATE KEY UPDATE meta_value = VALUES(meta_value)",
+				$post_id,
+				$key,
+				maybe_serialize( $value )
+			)
+		);
 	}
 
-	/** 最近の投稿を取得 */
-	public function list_recent( int $limit = 12 ) : array {
-		return $this->db->get_results(
-			$this->db->prepare( "SELECT * FROM {$this->table} ORDER BY created_at DESC LIMIT %d", $limit ),
+	/**
+	 * Get latest photos (paged).
+	 *
+	 * @return array[]
+	 */
+	public function latest( int $limit = 20 ): array {
+		global $wpdb;
+		return $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT * FROM {$this->table}
+				 ORDER BY id DESC
+				 LIMIT %d",
+				$limit
+			),
 			ARRAY_A
 		);
 	}

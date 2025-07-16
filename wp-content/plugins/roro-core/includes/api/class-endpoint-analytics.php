@@ -1,50 +1,59 @@
 <?php
-namespace RoroCore\Api;
+/**
+ * Endpoint: /analytics – aggregated KPI.
+ *
+ * @package RoroCore\API
+ */
 
-use WP_REST_Controller;
-use wpdb;
+declare( strict_types = 1 );
 
-class Endpoint_Analytics extends WP_REST_Controller {
+namespace RoroCore\API;
 
-	private wpdb $db;
-	public function __construct( wpdb $wpdb ) {
-		$this->db = $wpdb;
-		$this->namespace = 'roro/v1';
-		$this->rest_base = 'analytics';
+use WP_REST_Server;
+use WP_REST_Response;
+use WP_REST_Request;
+
+class Endpoint_Analytics {
+
+	private string $gacha_log;
+
+	public function __construct( \wpdb $wpdb ) {
+		$this->gacha_log = $wpdb->prefix . 'roro_gacha_log';
+		add_action( 'rest_api_init', [ $this, 'register' ] );
 	}
 
-	public function register_routes() {
+	public function register(): void {
 		register_rest_route(
-			$this->namespace,
-			"/{$this->rest_base}",
+			'roro/v1',
+			'/analytics',
 			[
-				'methods'  => 'GET',
-				'callback' => [ $this, 'get_data' ],
-				'permission_callback' => fn() => current_user_can( 'manage_options' ),
+				'methods'             => WP_REST_Server::READABLE,
+				'callback'            => [ $this, 'stats' ],
+				'permission_callback' => '__return_true',
 			]
 		);
 	}
 
-	public function get_data() {
-		$mau = $this->db->get_var(
-			"SELECT COUNT(*) FROM {$this->db->prefix}roro_customer
-			 WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)"
-		);
+	public function stats( WP_REST_Request $req ): WP_REST_Response {
+		global $wpdb;
 
-		$gacha_today = $this->db->get_var(
-			"SELECT COUNT(*) FROM {$this->db->prefix}roro_gacha_log
-			 WHERE DATE(created_at)=CURDATE()"
-		);
+		$sql = "
+			SELECT
+				SUM( created_at >= DATE( NOW() ) )          AS today_spins,
+				COUNT( DISTINCT DATE( created_at ) )        AS active_days,
+				COUNT( DISTINCT ip )                        AS unique_ips_30d
+			FROM {$this->gacha_log}
+			WHERE created_at >= DATE_SUB( NOW(), INTERVAL 30 DAY )
+		";
 
-		$revenue_mo = $this->db->get_var(
-			"SELECT COALESCE(SUM(amount),0) FROM {$this->db->prefix}roro_revenue
-			 WHERE DATE_FORMAT(created_at,'%Y-%m') = DATE_FORMAT(NOW(),'%Y-%m')"
-		);
+		$row = $wpdb->get_row( $sql, ARRAY_A );
 
-		return rest_ensure_response( [
-			'mau'      => (int) $mau,
-			'gacha'    => (int) $gacha_today,
-			'revenue'  => (float) $revenue_mo,
-		] );
+		return rest_ensure_response(
+			[
+				'today_spins'   => (int) $row['today_spins'],
+				'active_days'   => (int) $row['active_days'],
+				'unique_ips_30d'=> (int) $row['unique_ips_30d'],
+			]
+		);
 	}
 }
