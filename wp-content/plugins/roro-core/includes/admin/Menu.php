@@ -1,62 +1,59 @@
 <?php
 /**
- * 管理画面メニュー
+ * Admin menu registration.  Adds a top‑level menu and subpages for the
+ * RoRo Core plugin in the WordPress admin dashboard.  The dashboard
+ * page can be extended to show analytics or other summary information.
  *
- * @package RoroCore
+ * @package RoroCore\Admin
  */
 
 namespace RoroCore\Admin;
 
-defined( 'ABSPATH' ) || exit;
-
 class Menu {
+    public function __construct() {
+        add_action( 'admin_menu', [ $this, 'register_menu' ] );
+    }
 
-	/**
-	 * フック登録
-	 */
-	public static function init(): void {
-		add_action( 'admin_menu', [ self::class, 'register_pages' ] );
-	}
+    /**
+     * Register the plugin menu and submenus.
+     */
+    public function register_menu() : void {
+        add_menu_page(
+            __( 'RoRo Dashboard', 'roro-core' ),
+            __( 'RoRo', 'roro-core' ),
+            'manage_options',
+            'roro-core',
+            [ $this, 'render_dashboard' ],
+            'dashicons-pets',
+            25
+        );
+        add_submenu_page(
+            'roro-core',
+            __( 'Settings', 'roro-core' ),
+            __( 'Settings', 'roro-core' ),
+            'manage_options',
+            'roro-core-settings',
+            [ $this, 'render_settings' ]
+        );
+    }
 
-	/**
-	 * トップレベル「RoRo KPI」を追加
-	 */
-	public static function register_pages(): void {
-		add_menu_page(
-			'RoRo KPI',
-			'RoRo KPI',
-			'manage_options',
-			'roro-kpi',
-			[ self::class, 'render_kpi_page' ],
-			'dashicons-chart-line',
-			3
-		); // :contentReference[oaicite:2]{index=2}
-	}
+    /**
+     * Output the dashboard page markup.  For now we simply display
+     * placeholder text – you can replace this with actual analytics or
+     * widgets.
+     */
+    public function render_dashboard() : void {
+        echo '<div class="wrap"><h1>' . esc_html__( 'RoRo Dashboard', 'roro-core' ) . '</h1>';
+        echo '<p>' . esc_html__( 'Welcome to the RoRo platform dashboard.', 'roro-core' ) . '</p>';
+        echo '</div>';
+    }
 
-	/**
-	 * KPI ページ描画
-	 */
-	public static function render_kpi_page(): void {
-		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_die( esc_html__( 'You do not have sufficient permissions to access this page.' ) );
-		}
-
-		echo '<div class="wrap"><h1>RoRo KPI Dashboard</h1>';
-		echo '<p>Total Users: ' . esc_html( self::get_total_users() ) . '</p>';
-		echo '<p>Total Facilities: ' . esc_html( self::get_total_facilities() ) . '</p>';
-		echo '</div>';
-	}
-
-	protected static function get_total_users(): int {
-		global $wpdb;
-		return (int) $wpdb->get_var( "SELECT COUNT(ID) FROM {$wpdb->users}" );
-	}
-
-	protected static function get_total_facilities(): int {
-		global $wpdb;
-		$table = $wpdb->prefix . 'roro_facilities';
-		return (int) $wpdb->get_var( "SELECT COUNT(id) FROM {$table}" );
-	}
+    /**
+     * Output the settings page.  Delegates to the Settings class.
+     */
+    public function render_settings() : void {
+        // The Settings class registers its own page via add_options_page,
+        // but we call its render method here to embed within our menu.
+        ( new Settings() )->render_page();
+    }
 }
-
-Menu::init();
