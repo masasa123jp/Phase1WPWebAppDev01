@@ -1,0 +1,12 @@
+{
+  "name": "RoRo Pet Finder",
+  "short_name": "RoRo",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#4CAF50",
+  "icons": [
+    { "src": "/wp-content/plugins/roro-pwa/public/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/wp-content/plugins/roro-pwa/public/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
