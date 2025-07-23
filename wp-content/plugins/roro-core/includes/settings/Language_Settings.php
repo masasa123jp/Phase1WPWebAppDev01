@@ -1,13 +1,9 @@
 <?php
 /**
- * Language settings page.
+ * Module path: wp-content/plugins/roro-core/includes/settings/language_settings.php
  *
- * Registers a new settings page under the standard WordPress “Settings”
- * menu where administrators can choose the default language for the
- * application and enable/disable supported languages.  The selected
- * default language is stored as an option and used when no user‑specific
- * preference is available.  See `RoroCore\Locale\User_Locale_Manager` for
- * how the locale is determined at runtime.
+ * デフォルト言語設定を提供するクラス。管理者は日本語・英語・中国語・韓国語から選択し、
+ * 設定は roro_core_language オプションに保存されます。
  *
  * @package RoroCore\Settings
  */
@@ -15,35 +11,34 @@
 namespace RoroCore\Settings;
 
 class Language_Settings {
-    /**
-     * Option name used to store language preferences.
-     */
     public const OPTION_KEY = 'roro_core_language';
 
-    /**
-     * Hook into WordPress to register settings and menu entries.
-     */
-    public static function init() : void {
+    public static function init(): void {
         add_action( 'admin_init', [ self::class, 'register_settings' ] );
         add_action( 'admin_menu', [ self::class, 'add_options_page' ] );
     }
 
     /**
-     * Register the setting, sections and fields for language selection.
+     * 設定登録。
      */
-    public static function register_settings() : void {
+    public static function register_settings(): void {
         register_setting( self::OPTION_KEY, self::OPTION_KEY, [ 'sanitize_callback' => [ self::class, 'sanitize' ] ] );
         add_settings_section( 'languages', __( 'Language Settings', 'roro-core' ), '__return_false', self::OPTION_KEY );
-        add_settings_field( 'default_language', __( 'Default Language', 'roro-core' ), [ self::class, 'select_field_cb' ], self::OPTION_KEY, 'languages', [ 'label_for' => 'default_language' ] );
+        add_settings_field(
+            'default_language',
+            __( 'Default Language', 'roro-core' ),
+            [ self::class, 'select_field_cb' ],
+            self::OPTION_KEY,
+            'languages',
+            [ 'label_for' => 'default_language' ]
+        );
     }
 
     /**
-     * Sanitise the input before saving.  Ensures that the selected
-     * language code is one of our supported values.
+     * 入力値をサニタイズ。対応していない言語コードは日本語へフォールバック。
      *
-     * @param array $input Raw input from the settings form.
-     *
-     * @return array Sanitised values.
+     * @param array $input
+     * @return array
      */
     public static function sanitize( array $input ) : array {
         $supported = [ 'ja', 'en_US', 'zh_CN', 'ko' ];
@@ -55,9 +50,9 @@ class Language_Settings {
     }
 
     /**
-     * Render the select dropdown for choosing the default language.
+     * 言語選択ドロップダウンを表示。
      *
-     * @param array $args Arguments passed by WordPress (unused).
+     * @param array $args
      */
     public static function select_field_cb( array $args ) : void {
         $options = get_option( self::OPTION_KEY );
@@ -70,18 +65,23 @@ class Language_Settings {
         ];
         echo '<select id="default_language" name="' . esc_attr( self::OPTION_KEY ) . '[default_language]">';
         foreach ( $langs as $code => $label ) {
-            printf( '<option value="%1$s" %2$s>%3$s</option>', esc_attr( $code ), selected( $current, $code, false ), esc_html( $label ) );
+            printf(
+                '<option value="%1$s" %2$s>%3$s</option>',
+                esc_attr( $code ),
+                selected( $current, $code, false ),
+                esc_html( $label )
+            );
         }
         echo '</select>';
     }
 
     /**
-     * Add our options page under the Settings menu.
+     * 設定ページを管理画面に追加。
      */
     public static function add_options_page() : void {
         add_options_page(
             __( 'Language Settings', 'roro-core' ),
-            __( 'Language', 'roro-core' ),
+            __( 'Language',          'roro-core' ),
             'manage_options',
             self::OPTION_KEY,
             [ self::class, 'render_page' ]
@@ -89,7 +89,7 @@ class Language_Settings {
     }
 
     /**
-     * Output the settings page markup.
+     * 設定ページをレンダリング。
      */
     public static function render_page() : void {
         ?>

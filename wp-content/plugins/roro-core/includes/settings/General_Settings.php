@@ -1,10 +1,9 @@
 <?php
 /**
- * Plugin general settings.  Provides a simple settings page under
- * Settings → RoRo Core where API keys and other configuration values
- * can be stored.  Administrators can manage the Google Maps API key,
- * OpenAI key, Firebase/LIFF identifiers and FCM server key.  All values
- * are sanitised before saving.
+ * Module path: wp-content/plugins/roro-core/includes/settings/general_settings.php
+ *
+ * RoRo Core の一般設定クラス。Google Maps、OpenAI、FCM、LINE LIFF のAPIキーを保存し、
+ * サニタイズしてwp_optionsに格納します。
  *
  * @package RoroCore\Settings
  */
@@ -12,40 +11,30 @@
 namespace RoroCore\Settings;
 
 class General_Settings {
-    /**
-     * Name of the option stored in wp_options.  This array contains
-     * individual fields keyed by their identifiers.
-     */
     public const OPTION_KEY = 'roro_core_options';
 
-    /**
-     * Initialise the settings.  Hooks registration functions into
-     * WordPress.
-     */
     public static function init() : void {
         add_action( 'admin_init', [ self::class, 'register_settings' ] );
         add_action( 'admin_menu', [ self::class, 'add_options_page' ] );
     }
 
     /**
-     * Register the settings, section and fields.  Each field has its own
-     * sanitisation callback.
+     * 設定フィールド登録。
      */
     public static function register_settings() : void {
         register_setting( self::OPTION_KEY, self::OPTION_KEY, [ 'sanitize_callback' => [ self::class, 'sanitize' ] ] );
         add_settings_section( 'api_keys', __( 'API Keys', 'roro-core' ), '__return_false', self::OPTION_KEY );
-        add_settings_field( 'gmaps_key', __( 'Google Maps JS API Key', 'roro-core' ), [ self::class, 'text_field_cb' ], self::OPTION_KEY, 'api_keys', [ 'label_for' => 'gmaps_key' ] );
-        add_settings_field( 'openai_key', __( 'OpenAI API Key', 'roro-core' ), [ self::class, 'text_field_cb' ], self::OPTION_KEY, 'api_keys', [ 'label_for' => 'openai_key' ] );
-        add_settings_field( 'fcm_key', __( 'FCM Server Key', 'roro-core' ), [ self::class, 'text_field_cb' ], self::OPTION_KEY, 'api_keys', [ 'label_for' => 'fcm_key' ] );
-        add_settings_field( 'liff_id', __( 'LINE LIFF ID', 'roro-core' ), [ self::class, 'text_field_cb' ], self::OPTION_KEY, 'api_keys', [ 'label_for' => 'liff_id' ] );
+        add_settings_field( 'gmaps_key',  __( 'Google Maps JS API Key', 'roro-core' ), [ self::class, 'text_field_cb' ], self::OPTION_KEY, 'api_keys', [ 'label_for' => 'gmaps_key' ] );
+        add_settings_field( 'openai_key', __( 'OpenAI API Key',          'roro-core' ), [ self::class, 'text_field_cb' ], self::OPTION_KEY, 'api_keys', [ 'label_for' => 'openai_key' ] );
+        add_settings_field( 'fcm_key',    __( 'FCM Server Key',          'roro-core' ), [ self::class, 'text_field_cb' ], self::OPTION_KEY, 'api_keys', [ 'label_for' => 'fcm_key' ] );
+        add_settings_field( 'liff_id',    __( 'LINE LIFF ID',            'roro-core' ), [ self::class, 'text_field_cb' ], self::OPTION_KEY, 'api_keys', [ 'label_for' => 'liff_id' ] );
     }
 
     /**
-     * Sanitise the settings on save.  Ensures all values are simple strings.
+     * サニタイズ処理。空欄は空文字列として保存。
      *
-     * @param array $input Raw input.
-     *
-     * @return array Sanitised output.
+     * @param array $input
+     * @return array
      */
     public static function sanitize( array $input ) : array {
         return [
@@ -57,10 +46,9 @@ class General_Settings {
     }
 
     /**
-     * Render a text field.  Reads the current option value and prints
-     * an HTML input element.
+     * テキスト入力用コールバック。
      *
-     * @param array $args Arguments passed by WordPress.
+     * @param array $args
      */
     public static function text_field_cb( array $args ) : void {
         $options = get_option( self::OPTION_KEY );
@@ -74,15 +62,12 @@ class General_Settings {
     }
 
     /**
-     * Add the options page to the Settings menu.  The page itself is
-     * rendered in the admin/Menu class for integration into the plugin
-     * menu, but we still register it here for direct access via the
-     * Settings menu.
+     * 設定画面を「設定」メニューに追加。
      */
     public static function add_options_page() : void {
         add_options_page(
             __( 'RoRo Core Settings', 'roro-core' ),
-            __( 'RoRo Core', 'roro-core' ),
+            __( 'RoRo Core',          'roro-core' ),
             'manage_options',
             self::OPTION_KEY,
             [ self::class, 'render_page' ]
@@ -90,9 +75,7 @@ class General_Settings {
     }
 
     /**
-     * Render the settings page.  Wraps the standard settings API output
-     * in a form.  Called from both the options page and the plugin
-     * submenu.
+     * 設定画面を表示。
      */
     public static function render_page() : void {
         ?>

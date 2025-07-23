@@ -1,8 +1,9 @@
 <?php
 /**
- * Admin menu registration.  Adds a top‑level menu and subpages for the
- * RoRo Core plugin in the WordPress admin dashboard.  The dashboard
- * page can be extended to show analytics or other summary information.
+ * Module path: wp-content/plugins/roro-core/includes/admin/menu.php
+ *
+ * WordPressの管理画面にRoRo Core専用のトップレベルメニューとサブメニューを追加します。
+ * ダッシュボードでは簡単な案内を表示し、設定ページはGeneral_Settingsのrender_page()を呼び出します。
  *
  * @package RoroCore\Admin
  */
@@ -15,12 +16,12 @@ class Menu {
     }
 
     /**
-     * Register the plugin menu and submenus.
+     * メニュー登録。
      */
     public function register_menu() : void {
         add_menu_page(
             __( 'RoRo Dashboard', 'roro-core' ),
-            __( 'RoRo', 'roro-core' ),
+            __( 'RoRo',           'roro-core' ),
             'manage_options',
             'roro-core',
             [ $this, 'render_dashboard' ],
@@ -38,9 +39,7 @@ class Menu {
     }
 
     /**
-     * Output the dashboard page markup.  For now we simply display
-     * placeholder text – you can replace this with actual analytics or
-     * widgets.
+     * ダッシュボード表示。
      */
     public function render_dashboard() : void {
         echo '<div class="wrap"><h1>' . esc_html__( 'RoRo Dashboard', 'roro-core' ) . '</h1>';
@@ -49,11 +48,9 @@ class Menu {
     }
 
     /**
-     * Output the settings page.  Delegates to the Settings class.
+     * 設定画面表示。
      */
     public function render_settings() : void {
-        // The Settings class registers its own page via add_options_page,
-        // but we call its render method here to embed within our menu.
-        ( new Settings() )->render_page();
+        ( new \RoroCore\Settings\General_Settings() )->render_page();
     }
 }

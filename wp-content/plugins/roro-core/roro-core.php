@@ -1,32 +1,24 @@
 <?php
 /**
+ * Module path: wp-content/plugins/roro-core/roro-core.php
+ *
  * Plugin Name: RoRo Core (Refactored)
- * Description: Core functionality for the RoRo pet platform. Provides REST API endpoints, authentication, notifications and settings.  
- *              This refactored version consolidates duplicate code, corrects database table usage and adds a foundation for multilingual support via
- *              the WordPress internationalisation API.  
+ * Description: RoRo プラットフォームの中核となる機能を提供します。REST API、認証、多言語設定、通知、管理画面などを包括。
  * Version: 1.0.0
  * Author: Your Name
  * Text Domain: roro-core
+ *
+ * @package RoroCore
  */
 
-// Abort if accessed directly.
 defined( 'ABSPATH' ) || exit;
 
-/*
- * Define a few helpful constants.  These constants are used throughout the
- * plugin to build file system paths and URLs.  If you move the plugin
- * directory, WordPress will resolve these automatically on reload.
- */
 define( 'RORO_CORE_VERSION', '1.0.0' );
 define( 'RORO_CORE_DIR', plugin_dir_path( __FILE__ ) );
 define( 'RORO_CORE_URL', plugin_dir_url( __FILE__ ) );
 
 /**
- * Load the plugin textdomain for translations.  By default WordPress
- * will look in the `languages` directory for `.mo` files that correspond
- * to the current locale.  You can generate translation files using tools
- * like Poedit or Loco Translate.  See the documentation in
- * docs.i18n.wordpress.org for details.
+ * 翻訳ファイルを読み込む。
  */
 function roro_core_load_textdomain() {
     load_plugin_textdomain( 'roro-core', false, dirname( plugin_basename( __FILE__ ) ) . '/languages' );
@@ -34,104 +26,80 @@ function roro_core_load_textdomain() {
 add_action( 'plugins_loaded', 'roro_core_load_textdomain' );
 
 /**
- * Simple PSR‑4 autoloader.  WordPress does not ship with a PSR‑4 compliant
- * autoloader so we provide our own.  Any class under the `RoroCore` namespace
- * will be loaded from the `includes` directory automatically.  To add a new
- * class simply create a file that matches the namespace and class name.  For
- * example, `RoroCore\Api\Gacha_Endpoint` maps to
- * `includes/Api/Gacha_Endpoint.php`.
- */
-/*
- * Register an autoloader for classes under the RoroCore namespace.  Many of the
- * original files in this project used mixed‑case filenames.  To support a
- * consistent lowercase naming convention on case‑sensitive file systems such
- * as Linux, this autoloader first attempts to load the class using the
- * canonical PSR‑4 mapping (matching the class name exactly).  If that file
- * does not exist it will fall back to a lowercase version of the path.  This
- * allows new modules to be saved with all‑lowercase filenames (e.g.
- * `includes/api/breed_list_endpoint.php`) while still supporting older
- * CamelCase files until they are migrated.
- */
+     * PSR-4対応オートローダ。名称不一致の場合は小文字ファイルを探索します。
+     */
 spl_autoload_register( function ( $class ) {
     $prefix   = 'RoroCore\\';
     $base_dir = RORO_CORE_DIR . 'includes/';
-
-    // Ensure the class uses our namespace prefix.
     $len = strlen( $prefix );
     if ( strncmp( $prefix, $class, $len ) !== 0 ) {
         return;
     }
-
-    // Trim the namespace prefix and build a relative path.
     $relative_class = substr( $class, $len );
     $path           = str_replace( '\\', DIRECTORY_SEPARATOR, $relative_class );
-
-    // Attempt to load a file matching the class name exactly.
-    $file = $base_dir . $path . '.php';
+    // CamelCase ファイルを先に探し、存在しなければ小文字へフォールバック
+    $file       = $base_dir . $path . '.php';
+    $lower_file = $base_dir . strtolower( $path ) . '.php';
     if ( file_exists( $file ) ) {
         require_once $file;
         return;
     }
-
-    // Fall back to a lowercase path to support lowercase filenames.
-    $lower_file = $base_dir . strtolower( $path ) . '.php';
     if ( file_exists( $lower_file ) ) {
         require_once $lower_file;
     }
 } );
 
 /**
- * Initialise the plugin.  Here we instantiate our various classes.  The
- * REST endpoint classes register themselves on construction.  Admin
- * components are only loaded in the WP admin area.  Notification services
- * are also initialised here.
+ * プラグイン初期化。
  */
 function roro_core_init() {
-    // Authentication service registers its own routes.
-    new RoroCore\Auth\Auth_Service();
+    // 認証サービス
+    new \RoroCore\Auth\Auth_Service();
 
-    // REST API endpoints.  Each endpoint registers itself with the REST API on
-    // construction.  New endpoints have been added to cover the full
-    // functionality described in the screen transition diagram and to
-    // consolidate duplicate implementations.
-    new RoroCore\Api\Gacha_Endpoint();
-    new RoroCore\Api\Facility_Search_Endpoint();
-    new RoroCore\Api\Review_Endpoint();
-    new RoroCore\Api\Photo_Upload_Endpoint();
-    new RoroCore\Api\Ai_Advice_Endpoint();
-    new RoroCore\Api\User_Profile_Endpoint();
-    new RoroCore\Api\Analytics_Endpoint();
-    // Newly added endpoints for report flow and management features.
-    new RoroCore\Api\Breed_List_Endpoint();
-    new RoroCore\Api\Issues_Endpoint();
-    new RoroCore\Api\Report_Analysis_Endpoint();
-    new RoroCore\Api\Report_Email_Endpoint();
-    new RoroCore\Api\Sponsor_List_Endpoint();
-    new RoroCore\Api\Sponsor_Detail_Endpoint();
-    new RoroCore\Api\Ad_Approval_Endpoint();
-    new RoroCore\Api\Payment_Endpoint();
-    new RoroCore\Api\Facility_DB_Endpoint();
-    new RoroCore\Api\Contact_Endpoint();
-    new RoroCore\Api\Most_Used_Place_Endpoint();
-    new RoroCore\Api\Repeat_Usage_Endpoint();
-    new RoroCore\Api\Flow_Analysis_Endpoint();
-    new RoroCore\Api\Ad_Access_Analysis_Endpoint();
-    new RoroCore\Api\Download_Data_Endpoint();
+    // 既存APIエンドポイント
+    new \RoroCore\Api\Gacha_Endpoint();
+    new \RoroCore\Api\Facility_Search_Endpoint();
+    new \RoroCore\Api\Review_Endpoint();
+    new \RoroCore\Api\Photo_Upload_Endpoint();
+    new \RoroCore\Api\Ai_Advice_Endpoint();
+    new \RoroCore\Api\User_Profile_Endpoint();
+    new \RoroCore\Api\Analytics_Endpoint();
 
-    // Initialise language settings and locale management.  These classes
-    // register WordPress hooks to provide a settings page and to honour
-    // per‑user language preferences via the determine_locale filter.
+    // 新規・拡張エンドポイント
+    new \RoroCore\Api\Breed_List_Endpoint();
+    new \RoroCore\Api\Issues_Endpoint();
+    new \RoroCore\Api\Report_Analysis_Endpoint();
+    new \RoroCore\Api\Report_Email_Endpoint();
+    new \RoroCore\Api\Sponsor_List_Endpoint();
+    new \RoroCore\Api\Sponsor_Detail_Endpoint();
+    new \RoroCore\Api\Ad_Approval_Endpoint();
+    new \RoroCore\Api\Payment_Endpoint();
+    new \RoroCore\Api\Facility_DB_Endpoint();
+    new \RoroCore\Api\Contact_Endpoint();
+    new \RoroCore\Api\Most_Used_Place_Endpoint();
+    new \RoroCore\Api\Repeat_Usage_Endpoint();
+    new \RoroCore\Api\Flow_Analysis_Endpoint();
+    new \RoroCore\Api\Ad_Access_Analysis_Endpoint();
+    new \RoroCore\Api\Download_Data_Endpoint();
+
+    // Phase1.5/1.6用集約エンドポイント
+    new \RoroCore\Api\Breed_Stats_Endpoint( $GLOBALS['wpdb'] );
+    new \RoroCore\Api\Dashboard_Endpoint( $GLOBALS['wpdb'] );
+    new \RoroCore\Api\Geocode_Endpoint();
+    new \RoroCore\Api\Preference_Endpoint();
+    new \RoroCore\Api\Report_Endpoint( $GLOBALS['wpdb'] );
+
+    // 設定・ロケール・多言語
     \RoroCore\Settings\Language_Settings::init();
+    \RoroCore\Settings\General_Settings::init();
     \RoroCore\Locale\User_Locale_Manager::init();
 
-    // Admin UI.
+    // 管理メニュー
     if ( is_admin() ) {
-        new RoroCore\Admin\Menu();
-        new RoroCore\Admin\Settings();
+        new \RoroCore\Admin\Menu();
     }
 
-    // Notification service (e.g. weekly advice).  In this refactored version
-    // the Notification_Service registers its own scheduled events.
-    new RoroCore\Notifications\Notification_Service();
+    // 通知サービス
+    new \RoroCore\Notifications\Notification_Service();
 }
 add_action( 'init', 'roro_core_init' );
