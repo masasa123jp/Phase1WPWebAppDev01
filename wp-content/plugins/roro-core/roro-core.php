@@ -101,5 +101,9 @@ function roro_core_init() {
 
     // 通知サービス
     new \RoroCore\Notifications\Notification_Service();
+
+    // カスタム投稿タイプを登録
+    // 写真アップロード用 (roro_photo) とアドバイス記事用 (roro_advice) の2種類を1箇所で管理します。
+    \RoroCore\Post_Types::register();
 }
 add_action( 'init', 'roro_core_init' );
