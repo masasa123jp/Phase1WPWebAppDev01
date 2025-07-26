@@ -1,11 +1,10 @@
 <?php
 /**
- * Download data endpoint.
+ * データダウンロードエンドポイント。
  *
- * Allows administrators to download analytics data in CSV format.  The
- * request may specify a `dataset` parameter to select which report
- * should be exported.  The endpoint currently returns a placeholder
- * response indicating that the feature is not yet implemented.
+ * 管理者が分析データをCSV形式でダウンロードできるようにします。
+ * リクエストでは `dataset` パラメータを指定してエクスポートするレポートを選択できます。
+ * 現在の実装では未実装であることを示すプレースホルダー応答を返します。
  *
  * @package RoroCore\Api
  */

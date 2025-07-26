@@ -1,12 +1,11 @@
 <?php
 /**
- * Payment endpoint.
+ * 決済エンドポイント。
  *
- * Exposes basic payment management functionality for sponsor billing.  A
- * GET request will return a list of outstanding payments; a POST
- * request can be used to record a payment.  Only administrators may
- * access this endpoint.  In the initial implementation the data is
- * static and serves as a placeholder.
+ * スポンサー請求に関する基本的な決済管理機能を提供します。
+ * GET リクエストは未払いの決済一覧を返し、POST リクエストは決済を記録します。
+ * 管理者のみがこのエンドポイントにアクセスできます。初期実装ではデータは静的で
+ * プレースホルダーとして機能します。
  *
  * @package RoroCore\Api
  */
@@ -59,7 +58,7 @@ class Payment_Endpoint extends Abstract_Endpoint {
     public static function record_payment( WP_REST_Request $request ) : WP_REST_Response {
         $sponsor_id = (int) $request->get_param( 'sponsor_id' );
         $amount     = (float) $request->get_param( 'amount' );
-        // TODO: insert payment record into DB.
+        // TODO: 支払いレコードをデータベースに挿入してください。
         return rest_ensure_response( [ 'id' => rand( 100, 999 ), 'sponsor_id' => $sponsor_id, 'amount' => $amount, 'status' => 'paid' ] );
     }
 }

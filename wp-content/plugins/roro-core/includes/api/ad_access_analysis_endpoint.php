@@ -1,10 +1,10 @@
 <?php
 /**
- * Advertisement access analysis endpoint.
+ * 広告アクセス分析エンドポイント。
  *
- * Returns simple statistics about advertisement impressions and clicks.
- * Intended for sponsors to evaluate the performance of their ads.  Only
- * administrators may access this endpoint.  Data is static for now.
+ * 広告のインプレッション数やクリック数に関する簡易統計を返します。
+ * スポンサーが広告効果を評価するためのものです。管理者のみがアクセスできます。
+ * 現在のデータは静的です。
  *
  * @package RoroCore\Api
  */

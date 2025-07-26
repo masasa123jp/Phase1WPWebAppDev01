@@ -1,13 +1,11 @@
 <?php
 /**
- * Report analysis endpoint.
+ * レポート解析エンドポイント。
  *
- * Accepts user input (breed, age, region and selected issues) and returns
- * an analysis of the pet’s situation.  In a future iteration this
- * endpoint would call internal services to generate trend graphs,
- * suggested facilities and AI commentary.  At present it returns a
- * placeholder structure so that the front‑end can be built without
- * breaking.
+ * ユーザー入力（犬種、年齢、地域、選択した課題）を受け取り、
+ * ペットの状況に関する分析を返します。将来のバージョンでは
+ * 内部サービスを呼び出してトレンドグラフや施設の提案、AI コメントを生成する予定です。
+ * 現在はフロントエンドを構築するために壊れないプレースホルダー構造を返します。
  *
  * @package RoroCore\Api
  */
@@ -25,7 +23,7 @@ class Report_Analysis_Endpoint extends Abstract_Endpoint {
         add_action( 'rest_api_init', [ $this, 'register' ] );
     }
 
-    public static function register() : void {
+    public static void register() : void {
         register_rest_route( 'roro/v1', self::ROUTE, [
             [
                 'methods'             => 'POST',
@@ -42,14 +40,13 @@ class Report_Analysis_Endpoint extends Abstract_Endpoint {
     }
 
     public static function handle( WP_REST_Request $request ) : WP_REST_Response|WP_Error {
-        // Extract parameters.  In a real implementation these would be
-        // validated and passed to analysis services.
+        // パラメータを抽出します。実装では検証を行い分析サービスに渡します。
         $breed_id = (int) $request->get_param( 'breed_id' );
         $age      = (float) $request->get_param( 'age' );
         $region   = sanitize_text_field( $request->get_param( 'region' ) );
         $issues   = (array) $request->get_param( 'issues' );
 
-        // TODO: implement actual analysis logic.  For now return a stub.
+        // TODO: 実際の分析ロジックを実装してください。現在はスタブを返します。
         $response = [
             'summary' => sprintf( __( 'Breed %1$d (age %2$s) in %3$s', 'roro-core' ), $breed_id, $age, $region ),
             'message' => __( 'Analysis results will be implemented in a future release.', 'roro-core' ),

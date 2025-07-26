@@ -1,10 +1,9 @@
 <?php
 /**
- * Flow analysis endpoint.
+ * 行動フロー分析エンドポイント。
  *
- * Provides funnel/flow analytics data showing how users move through
- * different steps of the application.  For demonstration purposes a
- * static funnel is returned.  Restricted to administrators.
+ * アプリケーション内でユーザーがどのように各ステップを移動するかを示すファネル／フロー分析データを提供します。
+ * 実演のため、現在は静的なファネルを返します。管理者のみがアクセス可能です。
  *
  * @package RoroCore\Api
  */
@@ -21,7 +20,7 @@ class Flow_Analysis_Endpoint extends Abstract_Endpoint {
         add_action( 'rest_api_init', [ $this, 'register' ] );
     }
 
-    public static void register() : void {
+    public static function register() : void {
         register_rest_route( 'roro/v1', self::ROUTE, [
             [
                 'methods'             => 'GET',

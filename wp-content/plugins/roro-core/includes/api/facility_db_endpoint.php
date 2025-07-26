@@ -1,12 +1,11 @@
 <?php
 /**
- * Facility database endpoint.
+ * 施設データベースエンドポイント。
  *
- * Provides CRUD operations on the facility database for administrators.
- * A GET request returns a list of facilities, while a POST request
- * creates a new facility record.  Additional methods (PUT, DELETE)
- * could be added for editing and deleting facilities.  Only users
- * with the `manage_options` capability may access this endpoint.
+ * 管理者向けに施設データベースの CRUD 操作を提供します。
+ * GET リクエストでは施設一覧を返し、POST リクエストでは新規施設を登録します。
+ * 編集・削除用に PUT や DELETE メソッドを追加することも可能です。
+ * manage_options 権限を持つユーザーのみがこのエンドポイントにアクセスできます。
  *
  * @package RoroCore\Api
  */
@@ -63,7 +62,7 @@ class Facility_DB_Endpoint extends Abstract_Endpoint {
         $address = sanitize_text_field( $request->get_param( 'address' ) );
         $lat     = $request->get_param( 'lat' ) !== null ? (float) $request->get_param( 'lat' ) : null;
         $lng     = $request->get_param( 'lng' ) !== null ? (float) $request->get_param( 'lng' ) : null;
-        // TODO: insert into DB and return the new facility ID.
+        // TODO: データベースに挿入し、新しい施設IDを返すように実装してください。
         return rest_ensure_response( [ 'id' => rand( 100, 999 ), 'name' => $name, 'address' => $address, 'lat' => $lat, 'lng' => $lng ] );
     }
 }

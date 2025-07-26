@@ -1,13 +1,12 @@
 <?php
 /**
- * Breed list endpoint.
+ * 犬種一覧エンドポイント。
  *
- * Provides a simple read‑only API that returns a list of dog breeds.  This
- * endpoint is used by the report flow to populate the breed selection
- * screen.  In a real implementation the list of breeds would be
- * retrieved from a database table or an external service.  For now we
- * return a hard‑coded array of popular breeds.  The endpoint is public
- * and does not require authentication.
+ * 犬種のリストを返すシンプルな読み取り専用 API を提供します。
+ * このエンドポイントはレポートフローで犬種選択画面にデータを供給するために使用されます。
+ * 実装では犬種のリストはデータベーステーブルや外部サービスから取得しますが、
+ * 現時点では一般的な犬種の配列をハードコードで返します。エンドポイントは公開されており、
+ * 認証は不要です。
  *
  * @package RoroCore\Api
  */
@@ -28,9 +27,8 @@ class Breed_List_Endpoint extends Abstract_Endpoint {
     }
 
     /**
-     * Register the route.  The endpoint accepts GET requests and is
-     * publicly accessible.  We override the permission callback to
-     * always return true.
+     * ルートを登録します。エンドポイントは GET リクエストを受け付け、
+     * 公開アクセス可能です。常に true を返すよう permission callback を上書きします。
      */
     public static function register() : void {
         register_rest_route( 'roro/v1', self::ROUTE, [
@@ -43,13 +41,12 @@ class Breed_List_Endpoint extends Abstract_Endpoint {
     }
 
     /**
-     * Handle the request.  Returns a static array of breed objects.  Each
-     * breed has an ID and a name.  Additional metadata such as size or
-     * temperament could be added in future.
+     * リクエストを処理します。犬種オブジェクトの静的な配列を返します。
+     * 各犬種は ID と名前を持ちます。将来的にはサイズや性格などのメタデータを追加できます。
      *
-     * @param WP_REST_Request $request Incoming request (unused).
+     * @param WP_REST_Request $request 受信したリクエスト（未使用）。
      *
-     * @return WP_REST_Response Response containing the breed list.
+     * @return WP_REST_Response 犬種リストを含むレスポンス。
      */
     public static function handle( WP_REST_Request $request ) : WP_REST_Response {
         $breeds = [

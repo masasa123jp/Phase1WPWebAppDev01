@@ -18,13 +18,13 @@ class Cleanup {
 		}
 	}
 
-	/** Delete old transients & orphan metadata. */
+	/** 有効期限切れのトランジェントや孤立したメタデータを削除します。 */
 	public static function execute(): void {
 		global $wpdb;
-		// Delete expired transients – WP コアが実行するが念のため
+		// 期限切れのトランジェントを削除 – WPコアでも実行されるが念のため
 		delete_expired_transients();
 
-		// Orphan image meta cleanup
+		// 孤立した画像メタデータのクリーンアップ
 		$table = $wpdb->prefix . 'roro_photo_meta';
 		$wpdb->query(
 			"DELETE m FROM {$table} m

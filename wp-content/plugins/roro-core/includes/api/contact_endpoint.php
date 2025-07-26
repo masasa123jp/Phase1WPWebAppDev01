@@ -1,12 +1,10 @@
 <?php
 /**
- * Contact endpoint.
+ * お問い合わせエンドポイント。
  *
- * Allows users to submit contact forms.  The endpoint accepts a name,
- * email and message and sends the content to the site admin via
- * wp_mail().  Submissions are unauthenticated but could be rate
- * limited to prevent spam.  In a real implementation you would likely
- * store the contact in a database for follow‑up.
+ * ユーザーがお問い合わせフォームを送信できるようにします。名前、メールアドレス、メッセージを受け取り、
+ * wp_mail() でサイト管理者に内容を送信します。認証は不要ですが、スパム防止のためレート制限を検討してください。
+ * 実際の実装では、後追い用に問い合わせ内容をデータベースに保存することが推奨されます。
  *
  * @package RoroCore\Api
  */

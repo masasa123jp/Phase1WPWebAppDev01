@@ -1,10 +1,10 @@
 <?php
 /**
- * Facility review submission endpoint.  Accepts POST requests containing
- * a facility ID, rating and optional comment.  The rating is constrained
- * to the range 1–5.  Uses the `roro_facility_review` table which must
- * exist in the database.  Requires authentication via the default
- * permission callback in the base class.
+ * 施設レビュー投稿用エンドポイント。
+ * 施設ID、評価および任意のコメントを含む POST リクエストを受け付けます。
+ * 評価は 1〜5 の範囲に制限されます。`roro_facility_review` テーブルを使用するため、
+ * データベースにこのテーブルが存在している必要があります。
+ * 認証は基底クラスのデフォルトの permission callback によって行われます。
  *
  * @package RoroCore\Api
  */
@@ -24,7 +24,7 @@ class Review_Endpoint extends Abstract_Endpoint {
     }
 
     /**
-     * Register the review submission route.
+     * レビュー投稿用のルートを登録します。
      */
     public static function register() : void {
         register_rest_route( 'roro/v1', self::ROUTE, [
@@ -35,16 +35,16 @@ class Review_Endpoint extends Abstract_Endpoint {
                 'args'                => [
                     'facility_id' => [ 'type' => 'integer', 'required' => true ],
                     'rating'      => [ 'type' => 'number',  'required' => true ],
-                    'comment'     => [ 'type' => 'string',  'required' => false ],
+                    'comment'     = [ 'type' => 'string',  'required' => false ],
                 ],
             ],
         ] );
     }
 
     /**
-     * Handle review submission.  Validates rating and inserts into DB.
+     * レビュー投稿の処理を行います。評価を検証し、データベースへ挿入します。
      *
-     * @param WP_REST_Request $request Incoming request.
+     * @param WP_REST_Request $request 受信したリクエスト。
      *
      * @return WP_REST_Response|WP_Error
      */

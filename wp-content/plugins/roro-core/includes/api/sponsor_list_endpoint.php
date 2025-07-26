@@ -1,12 +1,12 @@
 <?php
 /**
- * Sponsor list endpoint.
+ * スポンサー一覧エンドポイント。
  *
- * Provides a list of active sponsors for the consumer application.  Each
- * sponsor contains an ID, name and URL to their advertising creative.
- * The data returned here could be managed via a custom post type or
- * stored in a dedicated table.  For now, a static array is used.  The
- * endpoint is public and does not require authentication.
+ * 消費者アプリケーション向けに、アクティブなスポンサーの一覧を提供します。
+ * 各スポンサーには ID、名称、および広告クリエイティブの URL が含まれます。
+ * ここで返されるデータはカスタム投稿タイプや専用テーブルで管理することもできますが、
+ * 現時点では静的な配列を使用しています。エンドポイントは公開されており、
+ * 認証は不要です。
  *
  * @package RoroCore\Api
  */

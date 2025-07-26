@@ -1,6 +1,6 @@
 <?php
 /**
- * Photo Storage helper – saves attachment meta to custom table.
+ * 写真ストレージ用ヘルパー – 添付ファイルのメタ情報をカスタムテーブルに保存します。
  *
  * @package RoroCore
  */
@@ -18,11 +18,11 @@ class Photo_Storage {
 	}
 
 	/**
-	 * Save meta (idempotent).
+	 * メタ情報を保存します（冪等）。
 	 *
-	 * @param int    $post_id Attachment ID.
-	 * @param string $key     Meta key.
-	 * @param mixed  $value   Meta value.
+	 * @param int    $post_id 添付ファイルの ID。
+	 * @param string $key     メタキー。
+	 * @param mixed  $value   メタ値。
 	 */
 	public function save( int $post_id, string $key, $value ): void {
 		global $wpdb;
@@ -39,7 +39,7 @@ class Photo_Storage {
 	}
 
 	/**
-	 * Get latest photos (paged).
+	 * 最新の写真を取得します（ページング）。
 	 *
 	 * @return array[]
 	 */

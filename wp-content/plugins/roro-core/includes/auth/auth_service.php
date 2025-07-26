@@ -1,12 +1,9 @@
 <?php
 /**
- * Module path: wp-content/plugins/roro-core/includes/auth/auth_service.php
- *
  * Firebase と LINE の認証を統合する REST サービス。IDトークンやアクセストークンを検証し、
- * WordPress ユーザーとカスタマーを作成または取得してログイン処理を行います。
- * Firebase サービスアカウントのパスはフィルタで指定し、機密情報をコードに含めません。
- *
- * @package RoroCore\Auth
+ * WordPress ユーザーおよびカスタマーを取得・作成してログイン処理を行う。
+ * Phase 1.6 では roro_identity テーブルとの連携を強化し、電子メール／WordPressアカウントとの
+ * マッピングおよびマルチプロバイダ対応を検討する。
  */
 
 namespace RoroCore\Auth;
@@ -31,7 +28,7 @@ class Auth_Service extends WP_REST_Controller {
         $this->namespace = 'roro/v1';
         $this->rest_base = 'auth';
 
-        // Firebase初期化（サービスアカウントJSONパスはフィルタで上書き可能）
+        // Firebase 初期化（サービスアカウントJSONパスはフィルタで上書き可能）
         $service_account_path = apply_filters( 'roro_core_service_account_path', RORO_CORE_DIR . 'credentials/service-account.json' );
         if ( file_exists( $service_account_path ) ) {
             try {
@@ -46,7 +43,7 @@ class Auth_Service extends WP_REST_Controller {
     }
 
     /**
-     * ルート登録。
+     * エンドポイントを登録。
      */
     public function register_routes() : void {
         register_rest_route( $this->namespace, "/{$this->rest_base}/firebase", [
@@ -76,7 +73,7 @@ class Auth_Service extends WP_REST_Controller {
     }
 
     /**
-     * Firebaseログイン処理。
+     * Firebase トークンによるログイン。
      *
      * @param WP_REST_Request $req
      * @return array|WP_Error
@@ -100,7 +97,7 @@ class Auth_Service extends WP_REST_Controller {
     }
 
     /**
-     * LINEログイン処理。
+     * LINE トークンによるログイン。
      *
      * @param WP_REST_Request $req
      * @return array|WP_Error
@@ -130,7 +127,7 @@ class Auth_Service extends WP_REST_Controller {
     }
 
     /**
-     * UID に基づき WordPress ユーザーとカスタマーを取得／作成し、ログイン状態をセットする。
+     * UID に基づき WordPress ユーザーおよびカスタマーを取得または作成し、ログイン状態をセット。
      *
      * @param string $uid
      * @param string $idp
@@ -143,7 +140,7 @@ class Auth_Service extends WP_REST_Controller {
         $row = $this->db->get_row( $this->db->prepare( "SELECT customer_id, wp_user_id FROM {$p}roro_identity WHERE uid = %s", $uid ), ARRAY_A );
 
         if ( ! $row ) {
-            // WordPressユーザーの取得／作成
+            // WordPress ユーザー取得／作成
             $user = get_user_by( 'email', $email );
             if ( ! $user ) {
                 $user_id = wp_create_user( $email, wp_generate_password(), $email );
@@ -160,7 +157,7 @@ class Auth_Service extends WP_REST_Controller {
             ], [ '%s', '%s', '%d' ] );
             $customer_id = (int) $this->db->insert_id;
 
-            // identityリンクを保存
+            // identity リンクを保存
             $this->db->insert( "{$p}roro_identity", [
                 'uid'         => $uid,
                 'customer_id' => $customer_id,
@@ -172,7 +169,7 @@ class Auth_Service extends WP_REST_Controller {
             $user_id     = (int) $row['wp_user_id'];
         }
 
-        // ログイン処理
+        // ログイン状態を設定
         wp_set_current_user( $user_id );
         wp_set_auth_cookie( $user_id, true );
 

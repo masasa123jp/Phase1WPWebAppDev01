@@ -1,12 +1,11 @@
 <?php
 /**
- * Advertisement approval endpoint.
+ * 広告承認エンドポイント。
  *
- * Allows administrators to approve or reject sponsor advertisements.  A
- * POST request with an ad ID and a status (approved|rejected) will
- * update the advertisement record.  Only users with the
- * `manage_options` capability may call this endpoint.  For now the
- * implementation simply returns the submitted values.
+ * 管理者がスポンサー広告を承認または拒否できるようにします。
+ * 広告 ID とステータス（approved|rejected）を含む POST リクエストが
+ * 広告レコードを更新します。manage_options 権限を持つユーザーのみが
+ * このエンドポイントを呼び出すことができます。現状の実装では送信された値をそのまま返します。
  *
  * @package RoroCore\Api
  */
@@ -43,7 +42,7 @@ class Ad_Approval_Endpoint extends Abstract_Endpoint {
     public static function handle( WP_REST_Request $request ) : WP_REST_Response|WP_Error {
         $ad_id = (int) $request->get_param( 'ad_id' );
         $status = $request->get_param( 'status' );
-        // TODO: Update the ad status in the database.
+        // TODO: データベース内の広告ステータスを更新してください。
         return rest_ensure_response( [ 'ad_id' => $ad_id, 'status' => $status ] );
     }
 }

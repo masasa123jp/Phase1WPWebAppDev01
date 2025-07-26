@@ -1,8 +1,8 @@
 <?php
 /**
- * Endpoint to fetch the current user’s profile.  Returns the user ID,
- * display name, email and roles.  Requires authentication via the
- * default permission callback.
+ * 現在のユーザープロフィールを取得するエンドポイント。
+ * ユーザーID、表示名、メールアドレス、およびロールを返します。
+ * 認証はデフォルトの permission callback によって要求されます。
  *
  * @package RoroCore\Api
  */

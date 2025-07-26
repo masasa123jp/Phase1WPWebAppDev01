@@ -1,10 +1,9 @@
 <?php
 /**
- * Most used place endpoint.
+ * 最も利用された場所エンドポイント。
  *
- * Returns analytics data about the most frequently used facilities or
- * locations over the past 30 days.  The endpoint is restricted to
- * administrators.  Data is currently static.
+ * 過去30日間で最も利用された施設や場所に関する分析データを返します。
+ * このエンドポイントは管理者のみアクセス可能です。返却データは現在ダミーです。
  *
  * @package RoroCore\Api
  */

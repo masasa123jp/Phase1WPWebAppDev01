@@ -1,9 +1,9 @@
 <?php
 /**
- * Photo upload endpoint.  Accepts a file upload and creates a WordPress
- * attachment.  Validates the file size and MIME type.  Returns the
- * attachment ID on success.  Requires authentication via the default
- * permission callback.
+ * 写真アップロード用エンドポイント。
+ * ファイルを受け取り、WordPress の添付ファイルを作成します。
+ * ファイルサイズと MIME タイプを検証します。成功時には添付 ID を返します。
+ * 認証はデフォルトの permission callback により要求されます。
  *
  * @package RoroCore\Api
  */
@@ -32,12 +32,11 @@ class Photo_Upload_Endpoint extends Abstract_Endpoint {
     }
 
     /**
-     * Handle the file upload.  Only accepts files up to 2MB by default and
-     * restricts MIME types to image formats.  Uses `wp_handle_upload` to
-     * manage the upload and `wp_insert_attachment` to create the
-     * attachment record.
+     * ファイルアップロードを処理します。デフォルトでは 2MB までのファイルのみ受け付け、
+     * MIME タイプは画像形式に制限します。`wp_handle_upload` を使用してアップロードを処理し、
+     * `wp_insert_attachment` によって添付ファイルレコードを作成します。
      *
-     * @param WP_REST_Request $request Incoming request.
+     * @param WP_REST_Request $request 受信したリクエスト。
      *
      * @return WP_REST_Response|WP_Error
      */
@@ -60,14 +59,14 @@ class Photo_Upload_Endpoint extends Abstract_Endpoint {
         if ( isset( $uploaded['error'] ) ) {
             return new WP_Error( 'upload_error', $uploaded['error'], [ 'status' => 500 ] );
         }
-        // Create attachment post.
+        // 添付ファイルポストを作成
         $attachment_id = wp_insert_attachment( [
             'post_mime_type' => $uploaded['type'],
             'post_title'     => sanitize_file_name( $uploaded['file'] ),
             'post_content'   => '',
             'post_status'    => 'inherit',
         ], $uploaded['file'] );
-        // Generate metadata and update attachment.
+        // メタデータを生成して添付を更新
         $attach_data = wp_generate_attachment_metadata( $attachment_id, $uploaded['file'] );
         wp_update_attachment_metadata( $attachment_id, $attach_data );
         return new WP_REST_Response( [ 'attachment_id' => (int) $attachment_id ], 201 );

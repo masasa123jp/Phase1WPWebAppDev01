@@ -1,10 +1,9 @@
 <?php
 /**
- * Repeat usage endpoint.
+ * リピート利用率エンドポイント。
  *
- * Calculates the percentage of repeat users over a defined period.  At
- * present this implementation returns dummy values.  Only
- * administrators may access the endpoint.
+ * 指定期間におけるリピートユーザーの割合を計算します。現在の実装ではダミー値を返します。
+ * このエンドポイントは管理者のみアクセス可能です。
  *
  * @package RoroCore\Api
  */
@@ -21,7 +20,7 @@ class Repeat_Usage_Endpoint extends Abstract_Endpoint {
         add_action( 'rest_api_init', [ $this, 'register' ] );
     }
 
-    public static void register() : void {
+    public static function register() : void {
         register_rest_route( 'roro/v1', self::ROUTE, [
             [
                 'methods'             => 'GET',

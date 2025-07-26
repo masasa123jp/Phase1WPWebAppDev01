@@ -1,9 +1,9 @@
 <?php
 /**
- * Analytics endpoint.  Returns aggregated key performance indicators
- * derived from the gacha log table over the last 30 days.  Counts
- * today’s spins, the number of active days and unique IPs.  Publicly
- * accessible.
+ * 分析用エンドポイント。
+ * 過去 30 日間のガチャログテーブルから集計した主要な指標を返します。
+ * 本日のスピン数、アクティブな日数、ユニークな IP 数をカウントします。
+ * 公開アクセス可能です。
  *
  * @package RoroCore\Api
  */
@@ -28,7 +28,7 @@ class Analytics_Endpoint {
     }
 
     /**
-     * Compute analytics.  Fetches aggregated stats from the gacha log table.
+     * 分析を計算します。ガチャログテーブルから集計した統計情報を取得します。
      *
      * @return WP_REST_Response
      */

@@ -1,12 +1,11 @@
 <?php
 /**
- * Report email endpoint.
+ * レポートメール送信エンドポイント。
  *
- * Sends a report to the specified email address.  The request must
- * include an email and a report payload.  The report is formatted as a
- * simple text message and passed to wp_mail().  Authentication is
- * required to prevent abuse.  In a production system additional
- * validation and rate limiting would be appropriate.
+ * 指定されたメールアドレスにレポートを送信します。リクエストには
+ * メールアドレスとレポートのペイロードが含まれている必要があります。
+ * レポートは単純なテキストメッセージとしてフォーマットされ、 wp_mail() に渡されます。
+ * 濫用を防ぐため認証が必要です。実運用では追加の検証やレート制限が適切です。
  *
  * @package RoroCore\Api
  */
@@ -44,7 +43,7 @@ class Report_Email_Endpoint extends Abstract_Endpoint {
         if ( ! is_email( $email ) ) {
             return new WP_Error( 'invalid_email', __( 'A valid email address is required.', 'roro-core' ), [ 'status' => 400 ] );
         }
-        // Simple formatting of the report.  In future this could be an HTML template.
+        // レポートを単純なテキスト形式に整形します。将来的には HTML テンプレートになる可能性があります。
         $message = print_r( $report, true );
         $sent    = wp_mail( $email, __( 'Your RoRo Report', 'roro-core' ), $message );
         if ( ! $sent ) {

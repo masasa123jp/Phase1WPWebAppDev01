@@ -1,10 +1,11 @@
 <?php
 /**
- * ガチャ API エンドポイント（多言語対応版）
+ * ガチャ API エンドポイント。
  *
- * 犬・猫それぞれのカテゴリに応じた賞品（施設・アドバイス・イベント・教材）を抽選します。
- * 郵便番号マッピングテーブルとの結合により、顧客の郵便番号から近隣候補を取得し、
- * 乱数で 1 つを選択します。
+ * 犬・猫などの種別やカテゴリに応じて施設・アドバイス・イベント・教材をランダムに返す。
+ * 入力された郵便番号を基に候補を絞り込んだ上で乱数で選択し、
+ * 抽選結果を gacha_log テーブルに記録する。
+ * Phase 1.6 ではスポンサー広告挿入や有料スピンに対応できるよう拡張する。
  */
 
 namespace RoroCore\Api;
@@ -13,23 +14,15 @@ use WP_Error;
 use WP_REST_Request;
 use WP_REST_Response;
 use WP_REST_Server;
-use RoroCore\Utils\Rate_Limiter;
 
 class Gacha_Endpoint extends Abstract_Endpoint {
-    /**
-     * REST ルート
-     */
     public const ROUTE = '/gacha';
 
     public function __construct() {
         add_action( 'rest_api_init', [ $this, 'register' ] );
     }
 
-    /**
-     * ガチャエンドポイントを登録します。POST リクエストを受け付けます。
-     * `category` パラメータはプラグイン側で賞品カテゴリ分類に使用できるように残しています
-     * （本実装では未使用ですが後方互換性のため保存）。
-     */
+    /** エンドポイント登録 */
     public static function register() : void {
         register_rest_route( 'roro/v1', self::ROUTE, [
             'methods'  => WP_REST_Server::CREATABLE,
@@ -43,21 +36,16 @@ class Gacha_Endpoint extends Abstract_Endpoint {
         ] );
     }
 
-    /**
-     * 権限チェック
-     *
-     * ログインしているユーザーのみガチャを実行できます。
-     */
+    /** 認証済みユーザーのみ実行可能 */
     public static function permission_callback() : bool {
         return is_user_logged_in();
     }
 
     /**
-     * ガチャを実行します。レートリミットを適用した後、設定済みリストからランダムで賞品を選びます。
-     * 結果はクライアントの IP とタイムスタンプとともに `roro_gacha_log` テーブルに記録されます。
+     * ガチャ処理本体。
      *
-     * @param WP_REST_Request $request 受信したリクエスト。
-     * @return WP_REST_Response|WP_Error 抽選結果またはエラー。
+     * @param WP_REST_Request $request
+     * @return WP_REST_Response|WP_Error
      */
     public static function handle( WP_REST_Request $request ) {
         global $wpdb;
@@ -73,16 +61,17 @@ class Gacha_Endpoint extends Abstract_Endpoint {
             return new WP_Error( 'invalid_category', __( 'Category is required.', 'roro-core' ), [ 'status' => 400 ] );
         }
 
+        // テーブル名設定
         $mapping_table  = $wpdb->prefix . 'category_zip_mapping';
         $facility_table = $wpdb->prefix . 'facility';
         $advice_table   = $wpdb->prefix . 'onepoint_advice';
         $event_table    = $wpdb->prefix . 'event';
         $material_table = $wpdb->prefix . 'material';
 
+        // 郵便番号から候補となる施設ID・アドバイスコードを取得
         $facilities = [];
         $advices    = [];
         if ( $zipcode ) {
-            // 入力された郵便番号から候補となる施設 ID とアドバイスコードを取得
             $like_zip     = $wpdb->esc_like( $zipcode ) . '%';
             $mapping_rows = $wpdb->get_results( $wpdb->prepare(
                 "SELECT facility_id, advice_code FROM {$mapping_table} WHERE species = %s AND category = %s AND zipcode LIKE %s",
@@ -100,8 +89,8 @@ class Gacha_Endpoint extends Abstract_Endpoint {
             }
         }
 
+        // 候補リスト生成
         $candidates = [];
-        // 施設候補を読み込み
         if ( ! empty( $facilities ) ) {
             $placeholders        = implode( ',', array_fill( 0, count( $facilities ), '%d' ) );
             $facility_candidates = $wpdb->get_results(
@@ -113,7 +102,6 @@ class Gacha_Endpoint extends Abstract_Endpoint {
             );
             $candidates          = array_merge( $candidates, $facility_candidates );
         }
-        // アドバイス候補を読み込み
         if ( ! empty( $advices ) ) {
             $placeholders      = implode( ',', array_fill( 0, count( $advices ), '%s' ) );
             $advice_candidates = $wpdb->get_results(
@@ -125,7 +113,7 @@ class Gacha_Endpoint extends Abstract_Endpoint {
             );
             $candidates        = array_merge( $candidates, $advice_candidates );
         }
-        // イベント候補を取得
+        // イベント・教材候補を追加
         $event_candidates = $wpdb->get_results(
             $wpdb->prepare(
                 "SELECT e.event_id AS id, e.title AS name, 'event' AS type
@@ -138,7 +126,6 @@ class Gacha_Endpoint extends Abstract_Endpoint {
             ARRAY_A
         );
         $candidates = array_merge( $candidates, $event_candidates );
-        // 教材候補を取得
         $material_candidates = $wpdb->get_results(
             $wpdb->prepare(
                 "SELECT material_id AS id, title AS name, 'material' AS type
@@ -154,9 +141,10 @@ class Gacha_Endpoint extends Abstract_Endpoint {
         if ( empty( $candidates ) ) {
             return new WP_Error( 'no_candidates', __( 'No candidates found.', 'roro-core' ), [ 'status' => 404 ] );
         }
-        // ランダムで 1 件選択
+
+        // 抽選
         $selected = $candidates[ array_rand( $candidates ) ];
-        // ログテーブルに記録
+        // ログ記録
         $gacha_table = $wpdb->prefix . 'gacha_log';
         $wpdb->insert(
             $gacha_table,

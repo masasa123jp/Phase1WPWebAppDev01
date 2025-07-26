@@ -1,13 +1,11 @@
 <?php
 /**
- * Sponsor detail endpoint.
+ * スポンサー詳細エンドポイント。
  *
- * Supports retrieving and updating individual sponsor records.  A GET
- * request with an `id` parameter returns the sponsor details.  A POST
- * request to the same route updates the sponsor record.  Only users
- * with the `manage_options` capability may perform updates.  The data
- * returned and accepted by this endpoint is currently static and for
- * demonstration purposes only.
+ * 個別のスポンサー情報の取得と更新をサポートします。`id` パラメータを指定した GET
+ * リクエストはスポンサーの詳細を返します。同じルートへの POST リクエストは
+ * スポンサー情報を更新します。更新操作は manage_options 権限を持つユーザーのみが
+ * 実行できます。ここで返されるデータは現在静的で、デモ目的です。
  *
  * @package RoroCore\Api
  */
@@ -51,7 +49,7 @@ class Sponsor_Detail_Endpoint extends Abstract_Endpoint {
 
     public static function get_sponsor( WP_REST_Request $request ) : WP_REST_Response|WP_Error {
         $id = (int) $request->get_param( 'id' );
-        // Hard‑coded sponsors for demonstration.  In real usage fetch from DB.
+        // デモ用にハードコードしたスポンサー。実際の利用では DB から取得します。
         $data = [
             1 => [ 'id' => 1, 'name' => 'Pet Food Co.', 'image' => RORO_CORE_URL . 'assets/ads/pet-food.jpg', 'status' => 'active' ],
             2 => [ 'id' => 2, 'name' => 'Vet Clinic',   'image' => RORO_CORE_URL . 'assets/ads/vet-clinic.jpg', 'status' => 'pending' ],
@@ -63,8 +61,8 @@ class Sponsor_Detail_Endpoint extends Abstract_Endpoint {
     }
 
     public static function update_sponsor( WP_REST_Request $request ) : WP_REST_Response|WP_Error {
-        // In a real implementation you would update the sponsor in the database.
-        // Here we simply return the submitted data as confirmation.
+        // 実装ではスポンサーをデータベースに更新します。
+        // ここでは送信されたデータをそのまま返して確認とします。
         $id    = (int) $request->get_param( 'id' );
         $name  = $request->get_param( 'name' );
         $image = $request->get_param( 'image' );

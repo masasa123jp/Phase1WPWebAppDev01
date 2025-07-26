@@ -43,7 +43,7 @@ class Ai_Advice_Endpoint extends Abstract_Endpoint {
                 'permission_callback' => [ self::class, 'permission_callback' ],
                 'args'                => [
                     'question' => [ 'type' => 'string', 'required' => true ],
-                    'breed'    => [ 'type' => 'string', 'required' => false ],
+                    'breed'    = [ 'type' => 'string', 'required' => false ],
                 ],
             ],
         ] );
