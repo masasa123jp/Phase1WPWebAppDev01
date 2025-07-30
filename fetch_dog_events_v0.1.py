@@ -227,17 +227,32 @@ def _parse_date_range(text: str) -> str:
     return f"{parsed_dates[0]} to {parsed_dates[-1]}"
 
 
-def fetch_latte_events(keyword: Optional[str] = None,
-                       start_date: Optional[str] = None,
-                       end_date: Optional[str] = None) -> List[Dict[str, Any]]:
-    """Fetch events from Latte Channel's RSS feed.
+def fetch_latte_events(
+    keyword: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Fetch events from Latte Channel's RSS feed and scrape details from each article.
 
-    :param keyword: If provided, only events containing this keyword
-        in the title or description are returned.
+    Latte Channel publishes individual articles for each upcoming pet event and
+    exposes them via a WordPress RSS feed.  The original implementation
+    relied solely on the feed description to derive a date and discarded
+    location and venue information.  However, each linked article contains
+    structured information such as the event name (名称), date/time
+    (開催日時) and venue/address (会場) within the body.  This revised
+    scraper follows the RSS links and parses these fields from the page
+    whenever possible.  If the article cannot be retrieved or does not
+    contain the expected markers, the scraper falls back to using the
+    feed title and attempts to extract a date from the description.
+
+    :param keyword: If provided, only events containing this keyword in
+        the article title or description are returned.
     :param start_date: ISO8601 date string; events before this date
-        are excluded (if a date is detectable in the description).
+        are excluded (if a date is detectable).
     :param end_date: ISO8601 date string; events after this date are
         excluded.
+    :returns: A list of event dictionaries with keys ``name``, ``date``,
+        ``location``, ``venue``, ``source`` and ``url``.
     """
     feed_url = "https://lattechannel.com/category/pet-events/feed/"
     try:
@@ -246,40 +261,95 @@ def fetch_latte_events(keyword: Optional[str] = None,
     except Exception:
         return []
     soup = BeautifulSoup(resp.content, "xml")
-    events = []
+    events: List[Dict[str, Any]] = []
     for item in soup.find_all("item"):
+        # Basic metadata from the feed
         title = item.title.get_text(strip=True)
         link = item.link.get_text(strip=True)
         description = unescape(item.description.get_text(strip=True)) if item.description else ""
-        date_match = re.search(r"(\d{1,2})月(\d{1,2})日(?:\([^()]+\))?", description)
-        date_str = None
-        if date_match:
-            month, day = date_match.groups()
-            year = _dt.date.today().year
-            try:
-                date_str = _dt.date(year, int(month), int(day)).isoformat()
-            except ValueError:
-                date_str = None
-        event = {
-            "name": title,
-            "date": date_str or "",
-            "location": "",
-            "venue": "",
-            "source": "LatteChannel",
-            "url": link,
-            "description": description
-        }
+        # Skip early if keyword does not match feed title/description
         if keyword and keyword not in title and keyword not in description:
             continue
+        name: str = title
+        date_str: str = ""
+        location: str = ""
+        venue: str = ""
+        # Attempt to fetch the article page to extract structured info
+        try:
+            art = requests.get(link, timeout=10)
+            art.raise_for_status()
+            page = BeautifulSoup(art.content, "html.parser")
+            # Extract the article heading (often includes the prefecture/city in brackets)
+            heading_elem = page.find(["h1", "h2"])
+            if heading_elem:
+                heading_text = heading_elem.get_text(strip=True)
+                # Capture bracketed location like 【群馬県北群馬郡】
+                loc_match = re.search(r"【([^】]+)】", heading_text)
+                if loc_match:
+                    location = loc_match.group(1)
+            # Flatten text for regex search
+            page_text = page.get_text("\n", strip=True)
+            # Event name from "名称：" line, else fallback to feed title
+            name_match = re.search(r"名称[:：]\s*([^\n]+)", page_text)
+            if name_match:
+                name = name_match.group(1).strip()
+            # Date/time from "開催日時：" or "開催日：" line
+            dt_match = re.search(r"開催日(?:時)?[:：]\s*([^\n]+)", page_text)
+            if dt_match:
+                # Keep the raw Japanese date/time; convert simple single‑day dates to ISO when possible
+                date_candidate = dt_match.group(1).strip()
+                # Attempt to parse patterns like '2025年10月11日（土）' or '10月11日（土）、12日（日）'
+                # Extract first date range occurrence and convert to ISO
+                dates = re.findall(r"(\d{4})?年?(\d{1,2})月(\d{1,2})日", date_candidate)
+                if dates:
+                    # Convert only the first date
+                    y, m, d = dates[0]
+                    year = int(y) if y else _dt.date.today().year
+                    try:
+                        date_str = _dt.date(year, int(m), int(d)).isoformat()
+                    except ValueError:
+                        date_str = date_candidate
+                else:
+                    date_str = date_candidate
+            # Venue/address from "会場：" line
+            venue_match = re.search(r"会場[:：]\s*([^\n]+)", page_text)
+            if venue_match:
+                venue = venue_match.group(1).strip()
+        except Exception:
+            # Fallback: attempt to parse a simple date from feed description
+            date_match = re.search(r"(\d{1,2})月(\d{1,2})日", description)
+            if date_match:
+                month, day = date_match.groups()
+                year = _dt.date.today().year
+                try:
+                    date_str = _dt.date(year, int(month), int(day)).isoformat()
+                except ValueError:
+                    date_str = ""
+        # Build the event record
+        event = {
+            "name": name,
+            "date": date_str,
+            "location": location,
+            "venue": venue,
+            "source": "LatteChannel",
+            "url": link,
+        }
         events.append(event)
-    # Filter by dates
+    # Apply date filtering if requested
     def within_dates(ev: Dict[str, Any]) -> bool:
+        # If the event date is a single ISO date string, compare lexically
         if start_date and ev["date"]:
-            if ev["date"] < start_date:
-                return False
+            try:
+                if len(ev["date"]) == 10 and ev["date"] < start_date:
+                    return False
+            except Exception:
+                pass
         if end_date and ev["date"]:
-            if ev["date"] > end_date:
-                return False
+            try:
+                if len(ev["date"]) == 10 and ev["date"] > end_date:
+                    return False
+            except Exception:
+                pass
         return True
     return [e for e in events if within_dates(e)]
 
@@ -697,10 +767,20 @@ def fetch_amile_events() -> List[Dict[str, Any]]:
 def fetch_mlit_events() -> List[Dict[str, Any]]:
     """Scrape event listings from MLIT's "地域のイベント情報" page.
 
-    Returns a list of events with organiser, date and summary.  The
-    portal is designed for sharing and utilising the latest
-    public‑private partnership town development initiatives and
-    includes a table listing events and seminars【52950776939853†L27-L33】【52950776939853†L34-L44】.
+    The MLIT portal for "地域のイベント情報" no longer uses a traditional HTML
+    `<table>` to render event data.  Instead, it builds an unordered list
+    (`<ul id="js-le-table">`) populated via client‑side JavaScript.  Each
+    event is represented by an `<li>` with the class `le-table-row row-data`
+    containing three `<div>` elements: the first holds the organiser and
+    location, the second holds the date string, and the third contains
+    the event title (often with a hyperlink) and optional flyers.  This
+    updated parser extracts those elements directly from the static HTML
+    returned by the server, which includes the prepopulated list.  If
+    the expected structure is not found, an empty list is returned.
+
+    :returns: A list of dictionaries with keys ``name``, ``date``, ``location``
+        and ``url``.  Venue information is generally not provided by MLIT,
+        so the ``venue`` field is left blank.
     """
     url = "https://www.mlit.go.jp/toshi/local-event/"
     try:
@@ -710,23 +790,46 @@ def fetch_mlit_events() -> List[Dict[str, Any]]:
         return []
     soup = BeautifulSoup(resp.content, "html.parser")
     events: List[Dict[str, Any]] = []
-    table = soup.find("table")
-    if not table:
+    ul = soup.find("ul", id="js-le-table")
+    if not ul:
         return events
-    for tr in table.find_all("tr"):
-        cells = [c.get_text(" ", strip=True) for c in tr.find_all(["th", "td"])]
-        if len(cells) >= 3 and any(char.isdigit() for char in cells[1]):
-            organiser = cells[0]
-            date_text = cells[1]
-            content = cells[2]
-            events.append({
-                "name": content.split("/")[0].strip(),
-                "date": date_text.replace("/", ", "),
-                "location": organiser,
-                "venue": "",
-                "source": "MLIT",
-                "url": url
-            })
+    for li in ul.find_all("li", class_=lambda x: x and "row-data" in x.split()):
+        items = li.find_all("div", class_="row-item")
+        if len(items) < 3:
+            continue
+        organiser = items[0].get_text(" ", strip=True)
+        date_text = items[1].get_text(" ", strip=True)
+        content_div = items[2]
+        # Extract event name and link (if any)
+        # Some entries include a link followed by " / チラシ" etc.
+        # Among all <a> tags, pick the first one whose text is not 'チラシ'
+        name = ""
+        link = url
+        anchors = content_div.find_all("a")
+        for a in anchors:
+            text = a.get_text(strip=True)
+            if text and "チラシ" not in text:
+                name = text
+                link = a.get("href") or url
+                break
+        if not name:
+            # Fallback: use the raw text before any slash
+            raw = content_div.get_text(" ", strip=True)
+            name = raw.split("/")[0].strip()
+            link = url
+        # If the link is relative (starts with "../"), resolve it against the base URL
+        if link.startswith("../"):
+            link = requests.compat.urljoin(url, link)
+        # Normalize date separators by replacing fullwidth comma and tilde with comma+space
+        date_norm = date_text.replace("、", ", ").replace("～", " to ")
+        events.append({
+            "name": name,
+            "date": date_norm,
+            "location": organiser,
+            "venue": "",
+            "source": "MLIT",
+            "url": link,
+        })
     return events
 
 
