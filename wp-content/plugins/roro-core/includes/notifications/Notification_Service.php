@@ -2,8 +2,8 @@
 /**
  * Module path: wp-content/plugins/roro-core/includes/notifications/notification_service.php
  *
- * 週次アドバイス通知を送信するサービス。WordPress Cron を用いて毎週日曜にメッセージを配信します。
- * メール送信のほか、LINE/FCM 送信用のフックを残しており、実装はオーバーライド可能です。
+ * 週次アドバイス通知を送信するサービス。WordPress Cron により毎週日曜日に実行され、
+ * メール、LINE、FCM などのチャネルに対してアドバイスを配信します。デフォルト実装ではログ出力のみ行います。
  *
  * @package RoroCore\Notifications
  */
@@ -20,7 +20,7 @@ class Notification_Service {
     }
 
     /**
-     * Cronイベントをスケジュール。まだ登録されていない場合のみ設定。
+     * Cronイベントを登録。まだ登録されていなければ毎週日曜の実行をスケジュールする。
      */
     public function schedule_events() : void {
         if ( ! wp_next_scheduled( self::CRON_HOOK ) ) {
@@ -29,37 +29,37 @@ class Notification_Service {
     }
 
     /**
-     * 週次アドバイスを送信する。メール、LINE、FCM の3チャネルに送る。
+     * 週次アドバイスを送信する処理。メール、LINE、FCMへメッセージを送る。
      */
     public function send_weekly_advice() : void {
-        $advice = apply_filters( 'roro_weekly_advice', __( 'Remember to give your pet plenty of love and exercise!', 'roro-core' ) );
+        $advice = apply_filters( 'roro_weekly_advice', __( 'ペットにたくさんの愛情と運動を与えてください！', 'roro-core' ) );
         $this->send_email( $advice );
         $this->send_line( $advice );
         $this->send_fcm( $advice );
     }
 
     /**
-     * メール送信処理。デフォルトでは管理者メールへ送る。
+     * メール通知を送る。デフォルトでは管理者メールに送信。
      *
-     * @param string $message 送信する本文。
+     * @param string $message 送信するメッセージ
      */
     protected function send_email( string $message ) : void {
-        wp_mail( get_option( 'admin_email' ), __( 'Weekly Pet Advice', 'roro-core' ), $message );
+        wp_mail( get_option( 'admin_email' ), __( '週次ペットアドバイス', 'roro-core' ), $message );
     }
 
     /**
-     * LINE通知処理。ここではログ出力のみを行う。
+     * LINE通知を送る。デフォルト実装ではログに出力。
      *
-     * @param string $message 送信する本文。
+     * @param string $message 送信するメッセージ
      */
     protected function send_line( string $message ) : void {
         error_log( 'RoRo Core LINE advice: ' . $message );
     }
 
     /**
-     * FCM通知処理。ここではログ出力のみを行う。
+     * FCM通知を送る。デフォルト実装ではログに出力。
      *
-     * @param string $message 送信する本文。
+     * @param string $message 送信するメッセージ
      */
     protected function send_fcm( string $message ) : void {
         error_log( 'RoRo Core FCM advice: ' . $message );

@@ -1,9 +1,10 @@
 <?php
 /**
- * 行動フロー分析エンドポイント。
+ * Module path: wp-content/plugins/roro-core/includes/api/flow_analysis_endpoint.php
  *
- * アプリケーション内でユーザーがどのように各ステップを移動するかを示すファネル／フロー分析データを提供します。
- * 実演のため、現在は静的なファネルを返します。管理者のみがアクセス可能です。
+ * 行動フロー分析エンドポイント。
+ * レポートを投稿した顧客数と、課題情報を含むレポートを投稿した顧客数をカウントし、ファネルデータを返します。
+ * 管理者権限でのみ利用可能です。
  *
  * @package RoroCore\Api
  */
@@ -20,6 +21,9 @@ class Flow_Analysis_Endpoint extends Abstract_Endpoint {
         add_action( 'rest_api_init', [ $this, 'register' ] );
     }
 
+    /**
+     * ルート登録。
+     */
     public static function register() : void {
         register_rest_route( 'roro/v1', self::ROUTE, [
             [
@@ -32,14 +36,25 @@ class Flow_Analysis_Endpoint extends Abstract_Endpoint {
         ] );
     }
 
+    /**
+     * ファネルデータを生成する。
+     *
+     * @param WP_REST_Request $request
+     * @return WP_REST_Response
+     */
     public static function handle( WP_REST_Request $request ) : WP_REST_Response {
-        $funnel = [
-            [ 'step' => 'Select Breed',  'count' => 1000 ],
-            [ 'step' => 'Select Age',    'count' => 850 ],
-            [ 'step' => 'Select Region', 'count' => 800 ],
-            [ 'step' => 'Select Issue',  'count' => 750 ],
-            [ 'step' => 'View Report',   'count' => 700 ],
+        global $wpdb;
+        $report_table = $wpdb->prefix . 'roro_report';
+        $total = (int) $wpdb->get_var( "SELECT COUNT(DISTINCT customer_id) FROM {$report_table}" );
+        $with_issues = (int) $wpdb->get_var(
+            "SELECT COUNT(DISTINCT customer_id)
+               FROM {$report_table}
+              WHERE JSON_LENGTH(content->'$.issues') > 0"
+        );
+        $steps = [
+            [ 'step' => 'レポート提出', 'count' => $total ],
+            [ 'step' => '課題ありレポート', 'count' => $with_issues ],
         ];
-        return rest_ensure_response( $funnel );
+        return rest_ensure_response( $steps );
     }
 }

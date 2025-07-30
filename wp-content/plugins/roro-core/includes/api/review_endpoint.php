@@ -1,10 +1,10 @@
 <?php
 /**
+ * Module path: wp-content/plugins/roro-core/includes/api/review_endpoint.php
+ *
  * 施設レビュー投稿用エンドポイント。
- * 施設ID、評価および任意のコメントを含む POST リクエストを受け付けます。
- * 評価は 1〜5 の範囲に制限されます。`roro_facility_review` テーブルを使用するため、
- * データベースにこのテーブルが存在している必要があります。
- * 認証は基底クラスのデフォルトの permission callback によって行われます。
+ * 施設ID、評価（1〜5）、コメントを受け取り、roro_facility_review にレコードを挿入します。
+ * 評価は1〜5の範囲で検証し、WordPressユーザーIDから customer_id を取得して保存します。
  *
  * @package RoroCore\Api
  */
@@ -16,7 +16,6 @@ use WP_REST_Response;
 use WP_Error;
 
 class Review_Endpoint extends Abstract_Endpoint {
-
     public const ROUTE = '/reviews';
 
     public function __construct() {
@@ -24,7 +23,7 @@ class Review_Endpoint extends Abstract_Endpoint {
     }
 
     /**
-     * レビュー投稿用のルートを登録します。
+     * ルート登録。
      */
     public static function register() : void {
         register_rest_route( 'roro/v1', self::ROUTE, [
@@ -35,17 +34,23 @@ class Review_Endpoint extends Abstract_Endpoint {
                 'args'                => [
                     'facility_id' => [ 'type' => 'integer', 'required' => true ],
                     'rating'      => [ 'type' => 'number',  'required' => true ],
-                    'comment'     = [ 'type' => 'string',  'required' => false ],
+                    'comment'     => [ 'type' => 'string',  'required' => false ],
                 ],
             ],
         ] );
     }
 
     /**
-     * レビュー投稿の処理を行います。評価を検証し、データベースへ挿入します。
+     * 認可チェック：ログインユーザーのみ許可。
+     */
+    public static function permission_callback() : bool {
+        return is_user_logged_in();
+    }
+
+    /**
+     * レビュー投稿処理。
      *
-     * @param WP_REST_Request $request 受信したリクエスト。
-     *
+     * @param WP_REST_Request $request
      * @return WP_REST_Response|WP_Error
      */
     public static function handle( WP_REST_Request $request ) {
@@ -54,12 +59,23 @@ class Review_Endpoint extends Abstract_Endpoint {
         $rating      = (float) $request->get_param( 'rating' );
         $comment     = $request->get_param( 'comment' );
         if ( $rating < 1 || $rating > 5 ) {
-            return new WP_Error( 'invalid_rating', __( 'Rating must be between 1 and 5.', 'roro-core' ), [ 'status' => 400 ] );
+            return new WP_Error( 'invalid_rating', __( '評価は1〜5の範囲で入力してください。', 'roro-core' ), [ 'status' => 400 ] );
         }
-        $table = $wpdb->prefix . 'roro_facility_review';
-        $wpdb->insert( $table, [
-            'user_id'     => get_current_user_id(),
+        // WPユーザーID → customer_id を取得
+        $wp_user_id     = get_current_user_id();
+        $identity_table = $wpdb->prefix . 'roro_identity';
+        $customer_id    = (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT customer_id FROM {$identity_table} WHERE wp_user_id = %d",
+            $wp_user_id
+        ) );
+        if ( ! $customer_id ) {
+            return new WP_Error( 'no_customer', __( 'ユーザーに対応する顧客情報が見つかりません。', 'roro-core' ), [ 'status' => 400 ] );
+        }
+        // 保存
+        $review_table = $wpdb->prefix . 'roro_facility_review';
+        $wpdb->insert( $review_table, [
             'facility_id' => $facility_id,
+            'customer_id' => $customer_id,
             'rating'      => $rating,
             'comment'     => ( $comment !== null ) ? wp_kses_post( $comment ) : '',
             'created_at'  => current_time( 'mysql' ),

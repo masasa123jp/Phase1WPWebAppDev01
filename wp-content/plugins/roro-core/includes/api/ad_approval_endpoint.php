@@ -2,10 +2,8 @@
 /**
  * 広告承認エンドポイント。
  *
- * 管理者がスポンサー広告を承認または拒否できるようにします。
- * 広告 ID とステータス（approved|rejected）を含む POST リクエストが
- * 広告レコードを更新します。manage_options 権限を持つユーザーのみが
- * このエンドポイントを呼び出すことができます。現状の実装では送信された値をそのまま返します。
+ * 管理者が広告IDとステータスを指定して広告を承認または拒否します。ステータス approved は
+ * 'active' に、rejected は 'draft' に変換して更新します。結果として更新後の行を返します。
  *
  * @package RoroCore\Api
  */
@@ -23,6 +21,9 @@ class Ad_Approval_Endpoint extends Abstract_Endpoint {
         add_action( 'rest_api_init', [ $this, 'register' ] );
     }
 
+    /**
+     * ルート登録。
+     */
     public static function register() : void {
         register_rest_route( 'roro/v1', self::ROUTE, [
             [
@@ -32,17 +33,35 @@ class Ad_Approval_Endpoint extends Abstract_Endpoint {
                     return current_user_can( 'manage_options' );
                 },
                 'args'                => [
-                    'ad_id' => [ 'type' => 'integer', 'required' => true ],
+                    'ad_id'  => [ 'type' => 'integer', 'required' => true ],
                     'status' => [ 'type' => 'string',  'required' => true, 'enum' => [ 'approved', 'rejected' ] ],
                 ],
             ],
         ] );
     }
 
+    /**
+     * 広告の承認／拒否処理を実行する。
+     *
+     * @param WP_REST_Request $request
+     * @return WP_REST_Response|WP_Error
+     */
     public static function handle( WP_REST_Request $request ) : WP_REST_Response|WP_Error {
-        $ad_id = (int) $request->get_param( 'ad_id' );
+        global $wpdb;
+        $ad_id  = (int) $request->get_param( 'ad_id' );
         $status = $request->get_param( 'status' );
-        // TODO: データベース内の広告ステータスを更新してください。
-        return rest_ensure_response( [ 'ad_id' => $ad_id, 'status' => $status ] );
+        $table  = $wpdb->prefix . 'roro_ad';
+        // 存在確認
+        $exists = $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE ad_id = %d", $ad_id ) );
+        if ( ! $exists ) {
+            return new WP_Error( 'not_found', __( '広告が見つかりません。', 'roro-core' ), [ 'status' => 404 ] );
+        }
+        $new_status = ( 'approved' === $status ) ? 'active' : 'draft';
+        $wpdb->update( $table, [ 'status' => $new_status ], [ 'ad_id' => $ad_id ], [ '%s' ], [ '%d' ] );
+        $row = $wpdb->get_row(
+            $wpdb->prepare( "SELECT ad_id AS id, sponsor_id, title, status FROM {$table} WHERE ad_id = %d", $ad_id ),
+            ARRAY_A
+        );
+        return rest_ensure_response( $row );
     }
 }

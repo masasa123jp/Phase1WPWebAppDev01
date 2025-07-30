@@ -1,8 +1,10 @@
 <?php
 /**
- * 現在のユーザープロフィールを取得するエンドポイント。
- * ユーザーID、表示名、メールアドレス、およびロールを返します。
- * 認証はデフォルトの permission callback によって要求されます。
+ * Module path: wp-content/plugins/roro-core/includes/api/user_profile_endpoint.php
+ *
+ * ログインユーザーのプロフィールを返すエンドポイント。
+ * WPユーザーID・表示名・メール・ロールに加え、roro_identity から customer_id と provider、
+ * roro_customer から user_type と consent_status を取得して返します。
  *
  * @package RoroCore\Api
  */
@@ -19,6 +21,7 @@ class User_Profile_Endpoint extends Abstract_Endpoint {
         add_action( 'rest_api_init', [ $this, 'register' ] );
     }
 
+    /** ルート登録 */
     public static function register() : void {
         register_rest_route( 'roro/v1', self::ROUTE, [
             [
@@ -29,13 +32,48 @@ class User_Profile_Endpoint extends Abstract_Endpoint {
         ] );
     }
 
+    /**
+     * 認可チェック：ログインユーザーのみ。
+     */
+    public static function permission_callback(): bool {
+        return is_user_logged_in();
+    }
+
+    /**
+     * ユーザープロフィールを取得して返す。
+     *
+     * @param WP_REST_Request $request
+     * @return WP_REST_Response
+     */
     public static function handle( WP_REST_Request $request ) {
         $user = wp_get_current_user();
-        return rest_ensure_response( [
-            'id'    => (int) $user->ID,
-            'name'  => $user->display_name,
-            'email' => $user->user_email,
-            'roles' => $user->roles,
-        ] );
+        $profile = [
+            'wp_user_id' => (int) $user->ID,
+            'name'       => $user->display_name,
+            'email'      => $user->user_email,
+            'roles'      => $user->roles,
+        ];
+        // roro_identity から customer_id と provider を取得
+        global $wpdb;
+        $id_table = $wpdb->prefix . 'roro_identity';
+        $row      = $wpdb->get_row( $wpdb->prepare(
+            "SELECT customer_id, provider FROM {$id_table} WHERE wp_user_id = %d",
+            $user->ID
+        ), ARRAY_A );
+        if ( $row ) {
+            $profile['customer_id']   = (int) $row['customer_id'];
+            $profile['auth_provider'] = $row['provider'];
+            // roro_customer から user_type / consent_status を取得
+            $cust_table = $wpdb->prefix . 'roro_customer';
+            $cust       = $wpdb->get_row( $wpdb->prepare(
+                "SELECT user_type, consent_status FROM {$cust_table} WHERE customer_id = %d",
+                $row['customer_id']
+            ), ARRAY_A );
+            if ( $cust ) {
+                $profile['user_type']      = $cust['user_type'];
+                $profile['consent_status'] = $cust['consent_status'];
+            }
+        }
+        return rest_ensure_response( $profile );
     }
 }

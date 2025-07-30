@@ -1,11 +1,9 @@
 <?php
 /**
- * レポートメール送信エンドポイント。
+ * レポートメール送信用エンドポイント。
  *
- * 指定されたメールアドレスにレポートを送信します。リクエストには
- * メールアドレスとレポートのペイロードが含まれている必要があります。
- * レポートは単純なテキストメッセージとしてフォーマットされ、 wp_mail() に渡されます。
- * 濫用を防ぐため認証が必要です。実運用では追加の検証やレート制限が適切です。
+ * POSTで report (JSON 文字列) と email を受け取り、その内容を管理者宛および指定メールアドレスに送信します。
+ * メール送信後にtrue/falseを返します。メールが送れない場合はエラーを返します。
  *
  * @package RoroCore\Api
  */
@@ -23,32 +21,44 @@ class Report_Email_Endpoint extends Abstract_Endpoint {
         add_action( 'rest_api_init', [ $this, 'register' ] );
     }
 
+    /**
+     * ルート登録。
+     */
     public static function register() : void {
         register_rest_route( 'roro/v1', self::ROUTE, [
             [
                 'methods'             => 'POST',
                 'callback'            => [ self::class, 'handle' ],
-                'permission_callback' => [ self::class, 'permission_callback' ],
+                'permission_callback' => '__return_true',
                 'args'                => [
+                    'report' => [ 'type' => 'string', 'required' => true ],
                     'email'  => [ 'type' => 'string', 'required' => true ],
-                    'report' => [ 'type' => 'object', 'required' => true ],
                 ],
             ],
         ] );
     }
 
+    /**
+     * メール送信処理。
+     *
+     * @param WP_REST_Request $request
+     * @return WP_REST_Response|WP_Error
+     */
     public static function handle( WP_REST_Request $request ) : WP_REST_Response|WP_Error {
-        $email  = sanitize_email( $request->get_param( 'email' ) );
-        $report = $request->get_param( 'report' );
+        $report_json = $request->get_param( 'report' );
+        $email       = sanitize_email( $request->get_param( 'email' ) );
         if ( ! is_email( $email ) ) {
-            return new WP_Error( 'invalid_email', __( 'A valid email address is required.', 'roro-core' ), [ 'status' => 400 ] );
+            return new WP_Error( 'invalid_email', __( 'メールアドレスの形式が不正です。', 'roro-core' ), [ 'status' => 400 ] );
         }
-        // レポートを単純なテキスト形式に整形します。将来的には HTML テンプレートになる可能性があります。
-        $message = print_r( $report, true );
-        $sent    = wp_mail( $email, __( 'Your RoRo Report', 'roro-core' ), $message );
+        $subject = __( 'RoRo レポート', 'roro-core' );
+        $message = $report_json;
+        // 管理者にもCCする
+        $to      = [ $email, get_option( 'admin_email' ) ];
+        $headers = [ 'Content-Type: text/plain; charset=UTF-8' ];
+        $sent    = wp_mail( $to, $subject, $message, $headers );
         if ( ! $sent ) {
-            return new WP_Error( 'email_failed', __( 'Failed to send email.', 'roro-core' ), [ 'status' => 500 ] );
+            return new WP_Error( 'mail_failed', __( 'メール送信に失敗しました。', 'roro-core' ), [ 'status' => 500 ] );
         }
-        return rest_ensure_response( [ 'success' => true ] );
+        return rest_ensure_response( [ 'sent' => true ] );
     }
 }

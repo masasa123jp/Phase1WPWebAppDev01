@@ -1,20 +1,33 @@
 /**
- * API helpers for facility endpoints.
- * XServer 本番は /wp-json/roro/v1/* が同一オリジンなので CORS 不要。
+ * 施設検索APIヘルパー。
+ * species・category・位置情報を指定して施設を取得します。
+ * 緯度・経度が与えられなければ距離計算は行われません。
  */
-import axios from 'axios';
+import { apiClient } from './client';
 
 export interface Facility {
   id: number;
   name: string;
-  genre: number;
-  dist: number;
+  category: string;
+  lat: string | number;
+  lng: string | number;
+  distance: number;
+  avg_rating?: number;
 }
 
-export async function searchFacilities(lat: number, lng: number, rad = 3000) {
-  const { data } = await axios.get<Facility[]>(
-    `/wp-json/roro/v1/facility-search`,
-    { params: { lat, lng, rad } }
-  );
-  return data;
+export async function searchFacilities(
+  species: string,
+  category: string,
+  lat?: number,
+  lng?: number,
+  radius = 3000,
+  limit = 20
+): Promise<Facility[]> {
+  const params: Record<string, any> = { species, category, radius, limit };
+  if (lat != null && lng != null) {
+    params.lat = lat;
+    params.lng = lng;
+  }
+  const { data } = await apiClient.get('/facilities', { params });
+  return data.facilities ?? [];
 }

@@ -2,8 +2,8 @@
 /**
  * Module path: wp-content/plugins/roro-core/includes/api/breed_stats_endpoint.php
  *
- * Endpoint: /breed-stats/<breed>
- * 各犬種の月齢ごとの平均体重・身長を返します。結果はトランジェントに24時間キャッシュします。
+ * エンドポイント: /breed-stats/<breed>
+ * 指定された犬種の月齢ごとの平均体重・身長を返します。結果は24時間キャッシュします。
  *
  * @package RoroCore\Api
  */
@@ -59,17 +59,21 @@ class Breed_Stats_Endpoint {
         $breed = $req->get_param( 'breed' );
         $key   = "roro_stats_{$breed}";
         // キャッシュチェック
-        $cache = get_transient( $key );
-        if ( $cache ) {
+        if ( $cache = get_transient( $key ) ) {
             return rest_ensure_response( $cache );
         }
         // DB から取得
-        $sql  = "SELECT month_age, weight_avg, height_avg FROM {$this->table} WHERE breed_slug = %s ORDER BY month_age";
-        $rows = $wpdb->get_results( $wpdb->prepare( $sql, $breed ), ARRAY_A );
+        $rows = $wpdb->get_results( $wpdb->prepare(
+            "SELECT month_age, weight_avg, height_avg
+               FROM {$this->table}
+               WHERE breed_slug = %s
+               ORDER BY month_age",
+            $breed
+        ), ARRAY_A );
         if ( empty( $rows ) ) {
             return new WP_REST_Response( [ 'error' => 'Not found' ], 404 );
         }
-        // 24h キャッシュ
+        // 24 時間キャッシュ
         set_transient( $key, $rows, DAY_IN_SECONDS );
         return rest_ensure_response( $rows );
     }

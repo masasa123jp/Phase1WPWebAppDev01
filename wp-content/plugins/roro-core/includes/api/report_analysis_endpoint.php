@@ -2,10 +2,13 @@
 /**
  * レポート解析エンドポイント。
  *
- * ユーザー入力（犬種、年齢、地域、選択した課題）を受け取り、
- * ペットの状況に関する分析を返します。将来のバージョンでは
- * 内部サービスを呼び出してトレンドグラフや施設の提案、AI コメントを生成する予定です。
- * 現在はフロントエンドを構築するために壊れないプレースホルダー構造を返します。
+ * 入力された犬種ID、月齢、地域、課題IDの配列を用いて、簡易的な分析を行い結果を返します。
+ * 主な出力は以下の通り：
+ *  - summary: 入力内容をまとめた文字列
+ *  - issues: 課題IDに対応する名称一覧
+ *  - message: 簡易的な助言メッセージ
+ *  - topFacilities: レビューの高い施設トップ3（名前、カテゴリ、平均評価）
+ * 今後、AIモデルを用いた高度な分析に置き換える予定です。
  *
  * @package RoroCore\Api
  */
@@ -23,7 +26,10 @@ class Report_Analysis_Endpoint extends Abstract_Endpoint {
         add_action( 'rest_api_init', [ $this, 'register' ] );
     }
 
-    public static void register() : void {
+    /**
+     * ルート登録。
+     */
+    public static function register() : void {
         register_rest_route( 'roro/v1', self::ROUTE, [
             [
                 'methods'             => 'POST',
@@ -31,28 +37,60 @@ class Report_Analysis_Endpoint extends Abstract_Endpoint {
                 'permission_callback' => [ self::class, 'permission_callback' ],
                 'args'                => [
                     'breed_id'  => [ 'type' => 'integer', 'required' => true ],
-                    'age'       => [ 'type' => 'number',  'required' => true ],
-                    'region'    => [ 'type' => 'string',  'required' => true ],
-                    'issues'    => [ 'type' => 'array',   'required' => true, 'items' => [ 'type' => 'integer' ] ],
+                    'age_month' => [ 'type' => 'integer', 'required' => true ],
+                    'region'    => [ 'type' => 'string',  'required' => false ],
+                    'issues'    => [ 'type' => 'array',   'required' => false, 'items' => [ 'type' => 'integer' ] ],
                 ],
             ],
         ] );
     }
 
-    public static function handle( WP_REST_Request $request ) : WP_REST_Response|WP_Error {
-        // パラメータを抽出します。実装では検証を行い分析サービスに渡します。
-        $breed_id = (int) $request->get_param( 'breed_id' );
-        $age      = (float) $request->get_param( 'age' );
-        $region   = sanitize_text_field( $request->get_param( 'region' ) );
-        $issues   = (array) $request->get_param( 'issues' );
+    /**
+     * 認可チェック（認証済みなら許可）。
+     */
+    public static function permission_callback(): bool {
+        return is_user_logged_in();
+    }
 
-        // TODO: 実際の分析ロジックを実装してください。現在はスタブを返します。
-        $response = [
-            'summary' => sprintf( __( 'Breed %1$d (age %2$s) in %3$s', 'roro-core' ), $breed_id, $age, $region ),
-            'message' => __( 'Analysis results will be implemented in a future release.', 'roro-core' ),
-            'graph'   => [],
-            'facilities' => [],
-        ];
-        return rest_ensure_response( $response );
+    /**
+     * 分析処理本体。
+     *
+     * @param WP_REST_Request $request
+     * @return WP_REST_Response|WP_Error
+     */
+    public static function handle( WP_REST_Request $request ) : WP_REST_Response|WP_Error {
+        global $wpdb;
+        $breed_id  = (int) $request->get_param( 'breed_id' );
+        $age_month = (int) $request->get_param( 'age_month' );
+        $region    = sanitize_text_field( $request->get_param( 'region' ) );
+        $issues    = (array) $request->get_param( 'issues' );
+        // 課題名取得
+        $issue_names = [];
+        if ( ! empty( $issues ) ) {
+            $placeholders = implode( ',', array_fill( 0, count( $issues ), '%d' ) );
+            $issue_table  = $wpdb->prefix . 'roro_issue';
+            $names        = $wpdb->get_col( $wpdb->prepare( "SELECT name FROM {$issue_table} WHERE issue_id IN ($placeholders)", $issues ) );
+            $issue_names  = $names ?: [];
+        }
+        // 高評価施設上位3件を求める
+        $facility_table = $wpdb->prefix . 'roro_facility';
+        $review_table   = $wpdb->prefix . 'roro_facility_review';
+        $facilities     = $wpdb->get_results(
+            "SELECT f.facility_id AS id, f.name, f.category, COALESCE(AVG(r.rating),0) AS avg_rating
+               FROM {$facility_table} f
+          LEFT JOIN {$review_table} r ON f.facility_id = r.facility_id
+           GROUP BY f.facility_id
+           ORDER BY avg_rating DESC, f.name
+           LIMIT 3",
+            ARRAY_A
+        );
+        $summary = sprintf( 'breed_id=%d, age_month=%d, region=%s', $breed_id, $age_month, $region );
+        $message = __( 'これは簡易的な分析結果です。今後はAIを使った詳細な分析が導入される予定です。', 'roro-core' );
+        return rest_ensure_response( [
+            'summary'       => $summary,
+            'issues'        => $issue_names,
+            'message'       => $message,
+            'topFacilities' => $facilities,
+        ] );
     }
 }

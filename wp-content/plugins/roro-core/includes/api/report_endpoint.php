@@ -2,9 +2,9 @@
 /**
  * Module path: wp-content/plugins/roro-core/includes/api/report_endpoint.php
  *
- * 利用者からのフィードバックレポートを保存するエンドポイント。リクエストボディはJSON形式で、
- * message キーに内容を含めます。JSONが不正な場合や message が空の場合はエラーを返します。
- * 保存時は sanitize_text_field() を通し、作成日時を記録します。
+ * レポート保存エンドポイント。
+ * ペットの状態レポートを JSON 形式で受け取り、roro_report テーブルに保存します。
+ * 必須フィールド (breed_id, age_month) が欠けていないか検証します。ユーザーは認証済みである必要があります。
  *
  * @package RoroCore\Api
  */
@@ -14,9 +14,10 @@ namespace RoroCore\Api;
 use WP_REST_Server;
 use WP_REST_Request;
 use WP_REST_Response;
+use WP_Error;
 
 class Report_Endpoint {
-    /** @var string 保存先テーブル名 */
+    /** @var string テーブル名 */
     private string $table;
 
     public function __construct( \wpdb $wpdb ) {
@@ -35,48 +36,52 @@ class Report_Endpoint {
                 'methods'             => WP_REST_Server::CREATABLE,
                 'callback'            => [ $this, 'save' ],
                 'permission_callback' => [ $this, 'can_submit' ],
+                'args'                => [
+                    'content' => [ 'type' => 'object', 'required' => true ],
+                ],
             ]
         );
     }
 
     /**
-     * 投稿許可チェック。
-     *
-     * @return bool
+     * 認可：ログイン済みかつnonce検証。
      */
     public function can_submit(): bool {
         return is_user_logged_in() && wp_verify_nonce( $_REQUEST['nonce'] ?? '', 'wp_rest' );
     }
 
     /**
-     * フィードバックを保存。
+     * レポートを保存する。
      *
      * @param WP_REST_Request $req
-     * @return WP_REST_Response
+     * @return WP_REST_Response|WP_Error
      */
-    public function save( WP_REST_Request $req ): WP_REST_Response {
+    public function save( WP_REST_Request $req ) {
         global $wpdb;
-
-        try {
-            $data = json_decode( $req->get_body(), true, 512, JSON_THROW_ON_ERROR );
-        } catch ( \JsonException $e ) {
-            return new WP_REST_Response( [ 'error' => 'invalid_json' ], 400 );
-        }
-
-        if ( empty( $data['message'] ) ) {
-            return new WP_REST_Response( [ 'error' => 'empty_message' ], 400 );
-        }
-
-        $wpdb->insert(
-            $this->table,
-            [
-                'user_id'    => get_current_user_id(),
-                'message'    => sanitize_text_field( $data['message'] ),
-                'created_at' => current_time( 'mysql' ),
-            ],
-            [ '%d', '%s', '%s' ]
+        $wp_user_id     = get_current_user_id();
+        $identity_table = $wpdb->prefix . 'roro_identity';
+        $customer_id    = (int) $wpdb->get_var(
+            $wpdb->prepare( "SELECT customer_id FROM {$identity_table} WHERE wp_user_id = %d", $wp_user_id )
         );
-
-        return rest_ensure_response( [ 'success' => true ] );
+        if ( ! $customer_id ) {
+            return new WP_Error( 'no_customer', __( 'カスタマーが見つかりません。', 'roro-core' ), [ 'status' => 400 ] );
+        }
+        $content = $req->get_param( 'content' );
+        if ( ! is_array( $content ) ) {
+            return new WP_Error( 'invalid_content', __( 'content はオブジェクト形式である必要があります。', 'roro-core' ), [ 'status' => 400 ] );
+        }
+        if ( empty( $content['breed_id'] ) || empty( $content['age_month'] ) ) {
+            return new WP_Error( 'missing_fields', __( 'breed_id と age_month が必要です。', 'roro-core' ), [ 'status' => 400 ] );
+        }
+        $json_content = wp_json_encode( $content );
+        if ( false === $json_content ) {
+            return new WP_Error( 'invalid_json', __( 'JSON への変換に失敗しました。', 'roro-core' ), [ 'status' => 400 ] );
+        }
+        $wpdb->insert( $this->table, [
+            'customer_id' => $customer_id,
+            'content'     => $json_content,
+            'created_at'  => current_time( 'mysql' ),
+        ], [ '%d','%s','%s' ] );
+        return rest_ensure_response( [ 'report_id' => (int) $wpdb->insert_id ] );
     }
 }

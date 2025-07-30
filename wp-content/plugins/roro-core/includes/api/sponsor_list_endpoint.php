@@ -2,11 +2,7 @@
 /**
  * スポンサー一覧エンドポイント。
  *
- * 消費者アプリケーション向けに、アクティブなスポンサーの一覧を提供します。
- * 各スポンサーには ID、名称、および広告クリエイティブの URL が含まれます。
- * ここで返されるデータはカスタム投稿タイプや専用テーブルで管理することもできますが、
- * 現時点では静的な配列を使用しています。エンドポイントは公開されており、
- * 認証は不要です。
+ * roro_sponsor テーブルからアクティブなスポンサーを取得し、ID・名前・ロゴURLを返します。
  *
  * @package RoroCore\Api
  */
@@ -23,6 +19,9 @@ class Sponsor_List_Endpoint extends Abstract_Endpoint {
         add_action( 'rest_api_init', [ $this, 'register' ] );
     }
 
+    /**
+     * ルート登録。
+     */
     public static function register() : void {
         register_rest_route( 'roro/v1', self::ROUTE, [
             [
@@ -33,11 +32,21 @@ class Sponsor_List_Endpoint extends Abstract_Endpoint {
         ] );
     }
 
+    /**
+     * スポンサー一覧を取得して返します。
+     *
+     * @param WP_REST_Request $request
+     * @return WP_REST_Response
+     */
     public static function handle( WP_REST_Request $request ) : WP_REST_Response {
-        $sponsors = [
-            [ 'id' => 1, 'name' => 'Pet Food Co.', 'image' => RORO_CORE_URL . 'assets/ads/pet-food.jpg' ],
-            [ 'id' => 2, 'name' => 'Vet Clinic',   'image' => RORO_CORE_URL . 'assets/ads/vet-clinic.jpg' ],
-        ];
-        return rest_ensure_response( $sponsors );
+        global $wpdb;
+        $table = $wpdb->prefix . 'roro_sponsor';
+        $rows  = $wpdb->get_results(
+            "SELECT sponsor_id AS id, name, COALESCE(logo_url, '') AS image
+               FROM {$table} WHERE status = 'active'
+             ORDER BY created_at DESC",
+            ARRAY_A
+        );
+        return rest_ensure_response( $rows ?: [] );
     }
 }

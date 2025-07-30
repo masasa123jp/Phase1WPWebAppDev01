@@ -25,7 +25,12 @@ export default function App() {
   }, []);
 
   const spin = async () => {
-    await axios.post('/wp-json/roro/v1/gacha');
+    // Phase 1.6: species と category を指定してガチャを回します。
+    // UIから変更することも可能です。
+    await axios.post('/wp-json/roro/v1/gacha', {
+      species: 'dog',
+      category: 'cafe',
+    });
   };
 
   return (
