@@ -486,6 +486,16 @@ def parse_happyplace_posts(posts: Iterable[Dict[str, Any]]) -> List[Dict[str, An
         loc_match = re.search(r"会場[:：]\s*(.*?)\s", text)
         if loc_match:
             location = loc_match.group(1)
+        # If no location was found in the content, attempt to extract a
+        # bracketed location from the title.  Many Happyplace event
+        # posts prefix the event name with a bracket containing the
+        # prefecture and city, e.g. "【東京都渋谷区】イベント名".  Capturing
+        # this string provides at least a coarse location that can be
+        # geocoded by the general augmentation routine.
+        if not location:
+            m = re.search(r"【([^】]+)】", title)
+            if m:
+                location = m.group(1)
         events.append({
             "name": title,
             "date": date_str,
@@ -721,46 +731,138 @@ def fetch_wepet_events() -> List[Dict[str, Any]]:
 def fetch_amile_events() -> List[Dict[str, Any]]:
     """Scrape pet event information from AMILE (ペットライフスタイル).
 
-    The AMILE events page lists articles announcing events such as
-    "広島わんわん夏まつり2025" and other pet fairs, each with a
-    snippet summarising the event and a link to more details【442221644942755†screenshot】.
-    This scraper extracts the visible card information.
+    AMILE (ペットライフスタイル) publishes a list of event articles at
+    https://pet-lifestyle.com/events/.  Each card on this page links to an
+    article containing detailed information about one or more pet events.
+    Earlier versions of this scraper attempted to extract event data
+    directly from the list page and often returned zero results because
+    the markup uses generic ``<div>`` elements rather than ``<article>``
+    tags.  This implementation takes a two‑stage approach:
+
+    1. Fetch the listing page and collect all event article URLs.  Cards
+       are represented by anchors with the class ``BlogEntry__title`` or
+       nested within a ``blogCard`` container.  The link target (``href``)
+       is extracted for each card.
+    2. For each article, download the page and parse individual event
+       sections.  Event sections are marked by heading elements (``<h2>``
+       with an ``id`` beginning with ``__link__``) and are followed by
+       paragraphs containing ``<strong>日時：`` and ``<strong>住所：`` (or
+       ``場所：``) metadata.  If a page does not contain any such
+       headings, the page title is used as the event name and the first
+       ``日時``/``住所`` pair is extracted from the body.
+
+    The parser attempts to normalise dates to ISO 8601 (YYYY-MM-DD) by
+    capturing the first ``YYYY年M月D日`` sequence.  Location strings are
+    captured verbatim from the ``住所``/``場所`` field.  Venue
+    information is not explicitly available and is therefore left blank.
+
+    :returns: A list of dictionaries, each representing a single event with
+        keys ``name``, ``date``, ``location``, ``venue``, ``source`` and
+        ``url``.
     """
-    url = "https://pet-lifestyle.com/events/"
+    base_url = "https://pet-lifestyle.com"
+    listing_url = f"{base_url}/events/"
     try:
-        resp = requests.get(url, timeout=10)
+        resp = requests.get(listing_url, timeout=10)
         resp.raise_for_status()
     except Exception:
         return []
     soup = BeautifulSoup(resp.content, "html.parser")
+    # Collect links to event articles.  Some cards embed the link in a
+    # BlogEntry__title class while others nest it in a blogCard anchor.
+    article_links: List[str] = []
+    # From v0.3 we search for card titles using the BlogEntry__title class.
+    for title_div in soup.find_all("div", class_=lambda x: x and "BlogEntry__title" in x):
+        a = title_div.find("a", href=True)
+        if a:
+            href = a["href"]
+            # Ensure absolute URL
+            if href.startswith("/"):
+                href = base_url + href
+            article_links.append(href)
+    # If no article links were found (markup might have changed), fall back
+    # to parsing anchors inside blogCard containers.
+    if not article_links:
+        for card in soup.find_all("div", class_=lambda x: x and "blogCard" in x):
+            a = card.find("a", href=True)
+            if a:
+                href = a["href"]
+                if href.startswith("/"):
+                    href = base_url + href
+                article_links.append(href)
     events: List[Dict[str, Any]] = []
-    for card in soup.find_all("article"):
-        title_elem = card.find(["h2", "h3"])
-        if not title_elem:
+    for article_url in article_links:
+        try:
+            aresp = requests.get(article_url, timeout=10)
+            aresp.raise_for_status()
+        except Exception:
+            # Skip articles that cannot be fetched
             continue
-        title = title_elem.get_text(strip=True)
-        snippet = card.get_text(" ", strip=True)
-        date = ""
-        date_match = re.search(r"(\d{4})年(\d{1,2})月(\d{1,2})日.*?〜?(\d{1,2})?月?(\d{1,2})?日?", snippet)
-        if date_match:
-            y, m1, d1, m2, d2 = date_match.groups(default="")
-            try:
-                start = _dt.date(int(y), int(m1), int(d1)).isoformat()
-                if m2 and d2:
-                    end = _dt.date(int(y), int(m2), int(d2)).isoformat()
-                    date = f"{start} to {end}"
-                else:
-                    date = start
-            except ValueError:
-                date = ""
-        events.append({
-            "name": title,
-            "date": date,
-            "location": "",
-            "venue": "",
-            "source": "AMILE",
-            "url": url
-        })
+        a_soup = BeautifulSoup(aresp.content, "html.parser")
+        # Determine a base event name from the page title.  This will be
+        # used if no individual event sections are found.
+        page_title_tag = a_soup.find("title")
+        page_title = page_title_tag.get_text(strip=True) if page_title_tag else ""
+        # Extract event sections marked by headings with id="__link__*".
+        section_headings = a_soup.find_all(["h1", "h2", "h3"], id=re.compile(r"__link__"))
+        if section_headings:
+            for heading in section_headings:
+                name = heading.get_text(strip=True)
+                # Find the next paragraph that contains date and address info
+                date_str = ""
+                location = ""
+                # Traverse siblings until we hit another heading or end
+                node = heading.find_next_sibling()
+                while node and node.name not in ["h1", "h2", "h3"]:
+                    text = node.get_text(" ", strip=True)
+                    if not date_str:
+                        # Look for YYYY年M月D日 pattern
+                        m = re.search(r"(\d{4})年(\d{1,2})月(\d{1,2})日", text)
+                        if m:
+                            y, mo, d = m.groups()
+                            try:
+                                date_str = _dt.date(int(y), int(mo), int(d)).isoformat()
+                            except ValueError:
+                                date_str = ""
+                    if not location:
+                        loc_match = re.search(r"(?:住所|場所)：\s*([^<\n]+)", text)
+                        if loc_match:
+                            location = loc_match.group(1).strip()
+                    if date_str and location:
+                        break
+                    node = node.find_next_sibling()
+                events.append({
+                    "name": name,
+                    "date": date_str,
+                    "location": location,
+                    "venue": "",
+                    "source": "AMILE",
+                    "url": article_url,
+                })
+        else:
+            # Fallback: try to extract a single event from the article
+            body_text = a_soup.get_text(" ", strip=True)
+            date_str = ""
+            location = ""
+            m = re.search(r"(\d{4})年(\d{1,2})月(\d{1,2})日", body_text)
+            if m:
+                y, mo, d = m.groups()
+                try:
+                    date_str = _dt.date(int(y), int(mo), int(d)).isoformat()
+                except ValueError:
+                    date_str = ""
+            loc_match = re.search(r"(?:住所|場所)：\s*([^<\n]+)", body_text)
+            if loc_match:
+                location = loc_match.group(1).strip()
+            if page_title:
+                events.append({
+                    "name": page_title,
+                    "date": date_str,
+                    "location": location,
+                    "venue": "",
+                    "source": "AMILE",
+                    "url": article_url,
+                })
     return events
 
 
@@ -834,40 +936,75 @@ def fetch_mlit_events() -> List[Dict[str, Any]]:
 
 
 def fetch_goguynet_events(limit: int = 10) -> List[Dict[str, Any]]:
-    """Fetch the latest headlines from 号外NET.
+    """Fetch recent event headlines from 号外NET.
 
-    号外NET is a regional news site that publishes articles on local
-    events, new store openings and gourmet topics【234226345209143†L119-L120】.  As
-    there is no public API, this scraper downloads the front page and
-    extracts the titles of the most recent posts.  Only a limited
-    number of entries are returned (default 10).
+    号外NET is a regional news aggregation site that reports on local
+    events, new store openings and regional topics【361177046474770†L28-L31】.  The
+    top page (https://goguynet.jp/) contains a grid of article cards.  Each
+    card is an anchor (`<a>`) with the class ``itemTitle01``.  Within
+    the card a label span (``span.label-default``) identifies the
+    category (e.g., ``イベント`` for events or ``開店/閉店`` for
+    store openings), a headline appears inside a nested `<h1>` tag,
+    and a `<div class="listDate01">` holds the publish timestamp.  This
+    parser selects only cards whose label is ``イベント`` and extracts
+    the city and event name from the headline.  The publication date
+    (not the event date) is retained in the ``date`` field.  A
+    ``limit`` parameter restricts the number of returned items.
+
+    Note that 号外NET delegates detailed event information to separate
+    regional subdomains.  This function surfaces only the most recent
+    event headlines and their links; it does not attempt to parse
+    individual subdomain pages for additional details.
+
+    :param limit: Maximum number of event entries to return.
+    :returns: A list of dictionaries with keys ``name``, ``date``,
+        ``location``, ``venue``, ``source`` and ``url``.
     """
-    url = "https://goguynet.jp/"
+    base_url = "https://goguynet.jp/"
     try:
-        resp = requests.get(url, timeout=10)
+        resp = requests.get(base_url, timeout=10)
         resp.raise_for_status()
     except Exception:
         return []
     soup = BeautifulSoup(resp.content, "html.parser")
     events: List[Dict[str, Any]] = []
-    for post in soup.find_all("article", limit=limit):
-        header = post.find(["h1", "h2", "h3"])
-        if not header:
+    # Find all article anchors on the front page.  These anchors wrap the
+    # thumbnail, label, title and date.  We filter by the label text.
+    anchors = soup.find_all("a", class_=lambda x: x and "itemTitle01" in x)
+    for a in anchors:
+        # Extract category label (イベント, 開店/閉店, 話題, etc.)
+        label_el = a.select_one("span.label-default")
+        if not label_el:
             continue
-        title = header.get_text(strip=True)
-        link_tag = header.find("a")
-        link = link_tag["href"] if link_tag and link_tag.has_attr("href") else url
-        # Attempt to extract date from the time tag or text
-        date_elem = post.find("time")
-        date_text = date_elem.get_text(strip=True) if date_elem else ""
+        category = label_el.get_text(strip=True)
+        if "イベント" not in category:
+            continue
+        # Extract headline text.  It is wrapped in <h1 class="itemTitle01In"> with
+        # an inner <span> containing the actual text.
+        title_el = a.select_one("h1.itemTitle01In span")
+        title = title_el.get_text(strip=True) if title_el else a.get_text(strip=True)
+        # Extract publish date/time
+        date_el = a.select_one("div.listDate01 span")
+        date_text = date_el.get_text(strip=True) if date_el else ""
+        # Attempt to derive location from the bracketed prefix (e.g., 【浜松市】)
+        location = ""
+        m = re.match(r"^【([^】]+)】", title)
+        if m:
+            location = m.group(1)
+            # Remove the bracketed part from the name
+            name = title[m.end():].lstrip()
+        else:
+            name = title
         events.append({
-            "name": title,
+            "name": name,
             "date": date_text,
-            "location": "",
+            "location": location,
             "venue": "",
             "source": "号外NET",
-            "url": link
+            "url": a.get("href") or base_url,
         })
+        if len(events) >= limit:
+            break
     return events
 
 
@@ -942,24 +1079,327 @@ def _filter_events(events: Iterable[Dict[str, Any]],
     return filtered
 
 
+# -----------------------------------------------------------------------------
+# Location augmentation utilities
+def _split_pref_city(location: str) -> (str, str):
+    """
+    Split a Japanese location string into prefecture and city parts.
+
+    The ``location`` field of an event often contains a prefecture
+    followed by a city or district, for example ``"群馬県北群馬郡"``.  This
+    helper uses a regular expression to capture the smallest prefix
+    ending with ``都``, ``道``, ``府`` or ``県`` as the prefecture and
+    returns the remainder as the city.  If the location does not
+    contain a prefecture suffix, it is treated entirely as a city.
+
+    :param location: Original location string (may be empty).
+    :returns: Tuple ``(prefecture, city)``; either part may be blank if
+        not identifiable.
+    """
+    if not location:
+        return "", ""
+    m = re.match(r"(.+?[都道府県])\s*(.*)", location)
+    if m:
+        pref, city = m.group(1), m.group(2)
+        return pref.strip(), city.strip()
+    # No prefecture suffix – treat the whole string as city
+    return "", location.strip()
+
+
+def _augment_events_with_geo(events: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Augment each event dictionary with additional location fields.
+
+    This function adds the following keys to each event:
+
+    * ``address`` – a best‑effort textual address, derived from the
+      event's venue if present, otherwise from the location.
+    * ``prefecture`` – the prefecture name extracted from the
+      ``location`` field using ``_split_pref_city``.
+    * ``city`` – the remainder of the location after removing the
+      prefecture.
+    * ``lat`` and ``lon`` – approximate latitude and longitude of the
+      prefecture centre.  These are looked up via a lazy geocoding
+      helper that uses OpenStreetMap's Nominatim service.  If the
+      prefecture is unknown or geocoding fails, empty strings are
+      returned.
+
+    :param events: Iterable of event dicts to augment.
+    :returns: A new list of events with added fields.
+    """
+    augmented: List[Dict[str, Any]] = []
+    for ev in events:
+        # Copy the event to avoid mutating the original list
+        new_ev = dict(ev)
+        # Derive address
+        addr = new_ev.get("venue") or new_ev.get("location") or ""
+        new_ev["address"] = addr
+        # Split location into prefecture and city
+        pref, city = _split_pref_city(str(new_ev.get("location", "")))
+        new_ev["prefecture"] = pref
+        new_ev["city"] = city
+        # Lazy geocode prefecture to lat/lon if prefecture exists
+        lat = lon = ""
+        if pref:
+            lat, lon = _get_prefecture_coords(pref)
+        # If no coordinates yet (e.g. no prefecture found), attempt to
+        # geocode the city or address.  Compose a query from available
+        # pieces: address, prefecture and city.  Using the most
+        # specific information first increases the chance of a precise
+        # result.
+        if not lat and not lon:
+            # Prefer to geocode based on prefecture and city only to
+            # minimise the number of unique queries (full addresses tend
+            # to be unique and would result in many API requests).
+            query = ""
+            if pref or city:
+                # Build "pref city" query, omitting empty parts
+                query = " ".join(part for part in [pref, city] if part).strip()
+            # If both prefecture and city are empty but an address exists,
+            # fall back to using the address; otherwise use the raw
+            # location string.
+            if not query:
+                if new_ev.get("address"):
+                    query = str(new_ev["address"]).strip()
+                elif new_ev.get("location"):
+                    query = str(new_ev["location"]).strip()
+            # Perform geocoding if we have a query
+            if query:
+                lat, lon = _get_generic_coords(query)
+        new_ev["lat"] = lat
+        new_ev["lon"] = lon
+        # Final fallback: if coordinates are still missing, attempt to
+        # geocode the event name itself.  This can help when the
+        # location fields do not provide a prefecture or city.  Use
+        # only the part of the name outside of any bracketed prefix
+        # (e.g. "【東京都】イベント名" -> "イベント名") to avoid
+        # confusing the geocoder.  Append "Japan" to constrain the
+        # search to Japan.  When geocoding the name we also request
+        # address details; if found we populate the ``address``,
+        # ``prefecture`` and ``city`` fields accordingly.
+        if not new_ev["lat"] and not new_ev["lon"]:
+            # Avoid expensive name‑based geocoding for Happyplace events.
+            # These events may number in the hundreds, so geocoding
+            # each title individually would result in excessive API calls
+            # and long execution times.  Instead, rely on location
+            # extracted from the title or content.  For other sources,
+            # fallback to geocoding the event name to obtain a
+            # coarse location.
+            if new_ev.get("source") != "Happyplace":
+                name = str(new_ev.get("name", "")).strip()
+                # Remove bracketed prefix like 【◯◯】 if present
+                cleaned = re.sub(r"^【[^】]+】", "", name)
+                if cleaned:
+                    query = f"{cleaned} Japan"
+                    lat2, lon2, addr2 = _get_generic_coords_and_address(query)
+                    if lat2 and lon2:
+                        new_ev["lat"] = lat2
+                        new_ev["lon"] = lon2
+                        # Update address if not already set or if it is blank
+                        if not new_ev.get("address"):
+                            new_ev["address"] = addr2
+                        # Attempt to update prefecture/city from the geocoded address
+                        if addr2:
+                            parts = [p.strip() for p in addr2.split(",")]
+                            pref_candidate = ""
+                            city_candidate = ""
+                            for i in range(len(parts) - 1):
+                                s = parts[i]
+                                if re.search(r"[都道府県]$", s):
+                                    pref_candidate = s
+                                    city_candidate = parts[i - 1] if i >= 1 else ""
+                                    break
+                            if pref_candidate and not new_ev.get("prefecture"):
+                                new_ev["prefecture"] = pref_candidate
+                            if city_candidate and not new_ev.get("city"):
+                                new_ev["city"] = city_candidate
+        augmented.append(new_ev)
+    return augmented
+
+
+# Cache for prefecture coordinates to avoid redundant geocoding
+from typing import Tuple
+
+# Cache mapping prefecture names to (lat, lon) coordinates.  Tuple[str, str]
+_PREF_COORD_CACHE: Dict[str, Tuple[str, str]] = {}
+
+def _get_prefecture_coords(prefecture: str) -> Tuple[str, str]:
+    """
+    Return the latitude and longitude for a given prefecture.
+
+    This function caches results to minimise network requests.  It
+    queries the OpenStreetMap Nominatim API for the prefecture name
+    followed by "Japan" and returns a tuple of strings (lat, lon).
+    If the lookup fails or returns no results, two empty strings are
+    returned.  The User‑Agent header is set to identify the scraper.
+
+    :param prefecture: Name of the prefecture (e.g. "群馬県").
+    :returns: Tuple (lat, lon) as strings.
+    """
+    from urllib.parse import urlencode
+    global _PREF_COORD_CACHE
+    if not prefecture:
+        return "", ""
+    if prefecture in _PREF_COORD_CACHE:
+        return _PREF_COORD_CACHE[prefecture]
+    try:
+        params = {"q": f"{prefecture} Japan", "format": "json", "limit": 1}
+        url = "https://nominatim.openstreetmap.org/search?" + urlencode(params)
+        resp = requests.get(url, headers={"User-Agent": "fetch-dog-events/0.3"}, timeout=5)
+        if resp.status_code == 200:
+            data = resp.json()
+            if data:
+                lat = data[0].get("lat", "")
+                lon = data[0].get("lon", "")
+                _PREF_COORD_CACHE[prefecture] = (lat, lon)
+                return lat, lon
+    except Exception:
+        pass
+    _PREF_COORD_CACHE[prefecture] = ("", "")
+    return "", ""
+
+
+# Cache for generic geocode lookups to avoid excessive API calls.
+_GENERIC_COORD_CACHE: Dict[str, Tuple[str, str]] = {}
+# Cache mapping arbitrary geocode queries to (lat, lon, address) tuples.  This
+# cache is separate from the lat/lon cache above because when we
+# request address details from the Nominatim API the response
+# includes a ``display_name`` string describing the full location.  We
+# store this along with the coordinates so that repeated queries
+# return both the coordinates and a human‑readable address without
+# issuing another network request.
+_GENERIC_ADDR_CACHE: Dict[str, Tuple[str, str, str]] = {}
+
+def _get_generic_coords(query: str) -> Tuple[str, str]:
+    """
+    Geocode an arbitrary query string using the OpenStreetMap Nominatim API.
+
+    This helper takes a free‑form address string (for example "長岡京市
+    京都府" or a full venue address) and returns a tuple of strings
+    ``(lat, lon)`` if successful.  Results are cached by query string to
+    minimise redundant network requests.
+
+    :param query: Free‑form address query to geocode.
+    :returns: Tuple (lat, lon) as strings; empty strings if lookup fails.
+    """
+    from urllib.parse import urlencode
+    global _GENERIC_COORD_CACHE
+    if not query:
+        return "", ""
+    if query in _GENERIC_COORD_CACHE:
+        return _GENERIC_COORD_CACHE[query]
+    try:
+        params = {"q": query, "format": "json", "limit": 1}
+        url = "https://nominatim.openstreetmap.org/search?" + urlencode(params)
+        resp = requests.get(url, headers={"User-Agent": "fetch-dog-events/0.3"}, timeout=5)
+        if resp.status_code == 200:
+            data = resp.json()
+            if data:
+                lat = data[0].get("lat", "")
+                lon = data[0].get("lon", "")
+                _GENERIC_COORD_CACHE[query] = (lat, lon)
+                return lat, lon
+    except Exception:
+        pass
+    _GENERIC_COORD_CACHE[query] = ("", "")
+    return "", ""
+
+def _get_generic_coords_and_address(query: str) -> Tuple[str, str, str]:
+    """
+    Geocode an arbitrary query and return latitude, longitude and a
+    human‑readable address.  This helper extends
+    ``_get_generic_coords`` by requesting address details from
+    Nominatim.  It caches results by query to minimise network
+    traffic.  The address is returned as the ``display_name`` field
+    from the geocoder, which typically contains a comma‑separated
+    description of the place.
+
+    :param query: Free‑form address or event name to geocode.
+    :returns: Tuple ``(lat, lon, address)``.  Empty strings are
+        returned if the geocode fails or yields no results.
+    """
+    from urllib.parse import urlencode
+    global _GENERIC_ADDR_CACHE
+    if not query:
+        return "", "", ""
+    if query in _GENERIC_ADDR_CACHE:
+        return _GENERIC_ADDR_CACHE[query]
+    try:
+        params = {
+            "q": query,
+            "format": "json",
+            "addressdetails": 1,
+            "limit": 1
+        }
+        url = "https://nominatim.openstreetmap.org/search?" + urlencode(params)
+        resp = requests.get(
+            url,
+            headers={"User-Agent": "fetch-dog-events/0.3"},
+            timeout=5
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            if data:
+                entry = data[0]
+                lat = entry.get("lat", "")
+                lon = entry.get("lon", "")
+                address = entry.get("display_name", "")
+                _GENERIC_ADDR_CACHE[query] = (lat, lon, address)
+                return lat, lon, address
+    except Exception:
+        pass
+    _GENERIC_ADDR_CACHE[query] = ("", "", "")
+    return "", "", ""
+
+
 def _output_events(events: Iterable[Dict[str, Any]], fmt: str) -> None:
-    """Output events in either JSON or CSV format.
+    """
+    Output events in either JSON or CSV format.
 
     :param events: Iterable of event dictionaries to output.
-    :param fmt: Either "json" or "csv".  JSON is pretty printed,
+    :param fmt: Either ``"json"`` or ``"csv"``.  JSON is pretty printed,
         CSV prints a header row followed by comma‑separated rows.
+
+    This function inspects the keys of the first event (if any) and
+    constructs a list of field names to emit.  At minimum the
+    following fields are included: ``name``, ``date``, ``location``,
+    ``venue``, ``address``, ``prefecture``, ``city``, ``source`` and
+    ``url``.  Additional keys present on the event dictionaries are
+    preserved in JSON output but will not be included in the CSV
+    header unless explicitly added here.
     """
+    ev_list = list(events)
     if fmt == "csv":
-        # Determine field names from the first event, defaulting to a
-        # standard set
-        fieldnames = ["name", "date", "location", "venue", "source", "url"]
-        # Print header
+        # Always include core fields in a sensible order.  Use any
+        # additional keys present on the first event as an indicator
+        # that the user has augmented the event objects.
+        # Include lat/lon as standard fields.  These columns appear after
+        # the geographic subdivisions to support downstream analysis.
+        core_fields = [
+            "name", "date", "location", "venue", "address",
+            "prefecture", "city", "lat", "lon", "source", "url"
+        ]
+        # Build the fieldnames list by preserving the order of core_fields
+        # and appending any extra keys from the first event that are
+        # not already present.  This ensures backwards compatibility.
+        extra_fields: List[str] = []
+        if ev_list:
+            for k in ev_list[0].keys():
+                if k not in core_fields:
+                    extra_fields.append(k)
+        fieldnames = core_fields + extra_fields
+        # Print header row
         print(",".join(fieldnames))
-        for ev in events:
-            row = [str(ev.get(fn, "")).replace(",", " ") for fn in fieldnames]
+        for ev in ev_list:
+            row = []
+            for fn in fieldnames:
+                value = ev.get(fn, "")
+                # Replace commas in values with spaces to avoid CSV
+                # delimiter collisions
+                row.append(str(value).replace(",", " "))
             print(",".join(row))
-    else:  # default to json
-        print(json.dumps(list(events), ensure_ascii=False, indent=2))
+    else:
+        print(json.dumps(ev_list, ensure_ascii=False, indent=2))
 
 
 def main(argv: List[str]) -> None:
@@ -1001,14 +1441,16 @@ def main(argv: List[str]) -> None:
         kwargs["keyword"] = args.keyword
     if site == "goguynet":
         kwargs["limit"] = args.limit
-    # Fetch events
+    # Fetch events from the selected site
     events: List[Dict[str, Any]] = fn(**kwargs) if kwargs else fn()
-    # Apply global filters
+    # Apply global filters based on keyword and date range
     events = _filter_events(events,
                             area=args.area,
                             station=args.station,
                             start_date=args.start_date,
                             end_date=args.end_date)
+    # Augment events with additional location fields (address, prefecture, city, lat, lon)
+    events = _augment_events_with_geo(events)
     # Output in chosen format
     _output_events(events, args.output_format)
 
